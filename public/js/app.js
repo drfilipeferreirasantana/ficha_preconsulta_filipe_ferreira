@@ -256,13 +256,117 @@
 
   document.getElementById('btn-new-process').addEventListener('click', () => openProcessModal());
 
+  function feeFieldsHtml() {
+    return `
+      <div class="section-title">Valor da causa e honorários</div>
+      <div class="g2">
+        <div class="field"><label>Valor da causa (R$)</label><input type="number" step="0.01" id="f-case_value"></div>
+        <div class="field"><label>Entrada recebida (R$)</label><input type="number" step="0.01" id="f-down_payment">
+          <span class="muted">Se preenchido, gera lançamento "pago" no financeiro + recibo para enviar ao cliente.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Honorários</label>
+        <div class="rr" style="display:flex;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="percentual" checked> % sobre o valor da causa/êxito</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="fixo"> Valor(es) fixo(s) a receber</label>
+        </div>
+      </div>
+      <div id="fee-percentual-block" class="field">
+        <label>Percentual (%)</label>
+        <input type="number" step="0.1" id="f-fee_percentage" placeholder="ex: 20">
+        <span class="muted">Gera um lançamento "a receber" pendente, com valor estimado, até a confirmação do êxito.</span>
+      </div>
+      <div id="fee-fixo-block" class="field" style="display:none">
+        <label>Valores a receber</label>
+        <div id="fixed-fees-list"></div>
+        <button type="button" class="btn btn-outline" id="btn-add-fee-row" style="margin-top:6px">+ Adicionar valor</button>
+      </div>
+    `;
+  }
+
+  function fixedFeeRowHtml(idx) {
+    return `
+      <div class="g2 fee-row" data-idx="${idx}" style="align-items:end;margin-bottom:6px">
+        <div class="field" style="margin-bottom:0"><label>Descrição</label><input type="text" class="fee-desc" placeholder="ex: 1ª parcela dos honorários"></div>
+        <div class="field" style="margin-bottom:0"><label>Valor (R$) / Vencimento</label>
+          <div style="display:flex;gap:6px">
+            <input type="number" step="0.01" class="fee-amount" style="flex:1">
+            <input type="date" class="fee-due" style="flex:1">
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function wireFeeFieldEvents(container) {
+    const radios = container.querySelectorAll('input[name="fee_type"]');
+    const percBlock = container.querySelector('#fee-percentual-block');
+    const fixoBlock = container.querySelector('#fee-fixo-block');
+    radios.forEach((r) => r.addEventListener('change', () => {
+      percBlock.style.display = r.value === 'percentual' && r.checked ? 'block' : percBlock.style.display;
+      if (r.checked) {
+        percBlock.style.display = r.value === 'percentual' ? 'block' : 'none';
+        fixoBlock.style.display = r.value === 'fixo' ? 'block' : 'none';
+      }
+    }));
+    const list = container.querySelector('#fixed-fees-list');
+    let feeRowCount = 0;
+    function addFeeRow() {
+      const div = document.createElement('div');
+      div.innerHTML = fixedFeeRowHtml(feeRowCount++);
+      list.appendChild(div.firstElementChild);
+    }
+    container.querySelector('#btn-add-fee-row').addEventListener('click', addFeeRow);
+    addFeeRow();
+  }
+
+  function readFeeFields(container) {
+    const feeType = container.querySelector('input[name="fee_type"]:checked').value;
+    const result = {
+      case_value: parseFloat(container.querySelector('#f-case_value').value) || null,
+      down_payment: parseFloat(container.querySelector('#f-down_payment').value) || null,
+      fee_type: feeType
+    };
+    if (feeType === 'percentual') {
+      result.fee_percentage = parseFloat(container.querySelector('#f-fee_percentage').value) || null;
+    } else {
+      result.fixed_fees = Array.from(container.querySelectorAll('.fee-row')).map((row) => ({
+        description: row.querySelector('.fee-desc').value.trim(),
+        amount: parseFloat(row.querySelector('.fee-amount').value) || null,
+        due_date: row.querySelector('.fee-due').value || null
+      })).filter((f) => f.amount);
+    }
+    return result;
+  }
+
   async function openProcessModal(id) {
     const p = id ? await api('/processes/' + id) : {};
-    const options = await clientOptions(p.client_id);
+    const options = id ? await clientOptions(p.client_id) : null;
     openModal(`
       <h3>${id ? 'Editar processo' : 'Novo processo'}</h3>
       <form id="process-form">
-        <div class="field"><label>Cliente</label><select id="f-client_id" required>${options}</select></div>
+        ${id ? `
+          <div class="field"><label>Cliente</label><select id="f-client_id" required>${options}</select></div>
+        ` : `
+          <div class="field">
+            <label>Cliente</label>
+            <div class="rr" style="display:flex;gap:10px;margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="client_mode" value="existing" checked> Cliente já cadastrado</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="client_mode" value="new"> Cadastrar novo cliente junto</label>
+            </div>
+          </div>
+          <div id="client-existing-block" class="field"><select id="f-client_id"></select></div>
+          <div id="client-new-block" style="display:none">
+            <div class="g2">
+              <div class="field"><label>Nome completo</label><input id="f-new-name"></div>
+              <div class="field"><label>WhatsApp</label><input id="f-new-phone" placeholder="(27) 99999-9999"></div>
+            </div>
+            <div class="g2">
+              <div class="field"><label>E-mail</label><input type="email" id="f-new-email"></div>
+              <div class="field"><label>CPF/CNPJ</label><input id="f-new-document"></div>
+            </div>
+          </div>
+        `}
         <div class="g2">
           <div class="field"><label>Número do processo (CNJ)</label><input id="f-number" value="${esc(p.number || '')}" placeholder="0000000-00.0000.0.00.0000"></div>
           <div class="field"><label>Tribunal / Vara</label><input id="f-court" value="${esc(p.court || '')}"></div>
@@ -286,6 +390,7 @@
           <div class="field"><label>Próximo prazo</label><input type="date" id="f-next_deadline" value="${p.next_deadline ? String(p.next_deadline).slice(0, 10) : ''}"></div>
           <div class="field"><label>Descrição do prazo</label><input id="f-next_deadline_desc" value="${esc(p.next_deadline_desc || '')}"></div>
         </div>
+        ${id ? '' : feeFieldsHtml()}
         <div class="modal-foot">
           <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
           <button type="submit" class="btn btn-gold">Salvar</button>
@@ -293,10 +398,27 @@
       </form>
     `);
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
-    document.getElementById('process-form').addEventListener('submit', async (e) => {
+    const form = document.getElementById('process-form');
+
+    if (id) {
+      // edicao: select ja populado com options
+    } else {
+      const existingBlock = document.getElementById('client-existing-block');
+      existingBlock.innerHTML = `<select id="f-client_id" required>${await clientOptions()}</select>`;
+      const newBlock = document.getElementById('client-new-block');
+      form.querySelectorAll('input[name="client_mode"]').forEach((r) => r.addEventListener('change', () => {
+        existingBlock.style.display = r.value === 'existing' && r.checked ? 'block' : existingBlock.style.display;
+        if (r.checked) {
+          existingBlock.style.display = r.value === 'existing' ? 'block' : 'none';
+          newBlock.style.display = r.value === 'new' ? 'block' : 'none';
+        }
+      }));
+      wireFeeFieldEvents(form);
+    }
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
-        client_id: document.getElementById('f-client_id').value,
         number: document.getElementById('f-number').value.trim(),
         court: document.getElementById('f-court').value.trim(),
         court_system: document.getElementById('f-court_system').value,
@@ -307,11 +429,59 @@
         next_deadline: document.getElementById('f-next_deadline').value || null,
         next_deadline_desc: document.getElementById('f-next_deadline_desc').value.trim()
       };
-      if (id) await api('/processes/' + id, { method: 'PUT', body: JSON.stringify(payload) });
-      else await api('/processes', { method: 'POST', body: JSON.stringify(payload) });
-      closeModal();
+
+      if (id) {
+        payload.client_id = document.getElementById('f-client_id').value;
+        await api('/processes/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+        closeModal();
+        loadProcesses();
+        return;
+      }
+
+      const clientMode = form.querySelector('input[name="client_mode"]:checked').value;
+      if (clientMode === 'new') {
+        payload.new_client = {
+          name: document.getElementById('f-new-name').value.trim(),
+          phone: document.getElementById('f-new-phone').value.trim(),
+          email: document.getElementById('f-new-email').value.trim(),
+          document: document.getElementById('f-new-document').value.trim()
+        };
+      } else {
+        payload.client_id = document.getElementById('f-client_id').value;
+      }
+      Object.assign(payload, readFeeFields(form));
+
+      let result;
+      try {
+        result = await api('/processes', { method: 'POST', body: JSON.stringify(payload) });
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+      CLIENTS_CACHE = [];
       loadProcesses();
+      openProcessCreatedModal(result);
     });
+  }
+
+  function openProcessCreatedModal(result) {
+    const { client, process, finance, whatsapp_link, receipt_url } = result;
+    openModal(`
+      <h3>Processo cadastrado</h3>
+      <p class="muted">Cliente: <strong>${esc(client.name)}</strong>${process.number ? ' · ' + esc(process.number) : ''}</p>
+      ${finance.length ? `
+        <div class="section-title">Lançamentos criados no financeiro</div>
+        ${finance.map((f) => `<div style="font-size:13px;padding:4px 0">${esc(f.description)} — ${money(f.amount)} <span class="muted">(${f.status})</span></div>`).join('')}
+      ` : ''}
+      <div class="section-title">Avisar o cliente</div>
+      ${whatsapp_link ? `<a class="btn btn-gold" style="display:inline-block;margin-bottom:8px" target="_blank" href="${whatsapp_link}">Enviar mensagem no WhatsApp</a>` : '<p class="muted">Cliente sem telefone cadastrado — não é possível gerar o link do WhatsApp.</p>'}
+      ${receipt_url ? `<div><a class="link-btn" target="_blank" href="${receipt_url}${receipt_url.includes('?') ? '&' : '?'}token=${encodeURIComponent(TOKEN)}">Abrir recibo da entrada (imprimir/salvar como PDF)</a></div>
+        <p class="muted" style="margin-top:6px">O WhatsApp não permite anexar arquivo por este link — abra o recibo, salve/imprima e anexe manualmente na conversa.</p>` : ''}
+      <div class="modal-foot">
+        <button type="button" class="btn btn-outline" id="modal-cancel">Fechar</button>
+      </div>
+    `);
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
   }
 
   async function openProcessDetail(id) {
@@ -340,7 +510,11 @@
       e.preventDefault();
       const description = document.getElementById('f-update-desc').value.trim();
       if (!description) return;
-      await api(`/processes/${id}/updates`, { method: 'POST', body: JSON.stringify({ description }) });
+      const result = await api(`/processes/${id}/updates`, { method: 'POST', body: JSON.stringify({ description }) });
+      if (result.whatsapp_link) {
+        const go = confirm('Andamento adicionado. Deseja avisar o cliente agora pelo WhatsApp?');
+        if (go) window.open(result.whatsapp_link, '_blank');
+      }
       openProcessDetail(id);
     });
   }
@@ -365,6 +539,7 @@
         <td>${badge(f.status, f.status)}</td>
         <td class="row-actions">
           ${f.status !== 'pago' ? `<span class="link-btn" data-pay="${f.id}">marcar pago</span>` : ''}
+          ${f.client_id ? `<a class="link-btn" target="_blank" href="/api/finance/${f.id}/receipt?token=${encodeURIComponent(TOKEN)}">recibo</a>` : ''}
           <span class="link-btn" data-del-fin="${f.id}" style="color:var(--danger)">excluir</span>
         </td>
       </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nenhum lançamento financeiro.</td></tr>';
@@ -498,8 +673,11 @@
           <span class="muted" style="white-space:nowrap;font-size:11px">${dateBR(n.created_at)}</span>
         </div>
         ${n.message ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(n.message)}</div>` : ''}
-        ${n.process_number ? `<div style="font-size:11px;color:var(--gold);margin-top:4px">Processo ${esc(n.process_number)} · ${esc(n.client_name || '')}</div>` : ''}
-        ${!n.is_read ? `<span class="link-btn" data-mark-read="${n.id}" style="margin-top:6px;display:inline-block">marcar como lida</span>` : ''}
+        ${n.process_number ? `<div style="font-size:11px;color:var(--slate-light);margin-top:4px">Processo ${esc(n.process_number)} · ${esc(n.client_name || '')}</div>` : ''}
+        <div style="margin-top:6px;display:flex;gap:14px">
+          ${!n.is_read ? `<span class="link-btn" data-mark-read="${n.id}">marcar como lida</span>` : ''}
+          ${n.whatsapp_link ? `<a class="link-btn" target="_blank" href="${n.whatsapp_link}">avisar cliente no WhatsApp</a>` : ''}
+        </div>
       </div>`).join('') : '<p class="muted">Nenhuma notificação até o momento.</p>';
 
     document.getElementById('notifications-list').innerHTML = syncBtnHtml + listHtml;

@@ -14,6 +14,23 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schema);
 
+// Migracao leve e idempotente: adiciona colunas novas em bancos ja existentes
+// (CREATE TABLE IF NOT EXISTS acima nao altera tabelas que ja existem).
+function ensureColumns(table, columns) {
+  const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!existing.has(name)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  }
+}
+ensureColumns('processes', {
+  case_value: 'REAL',
+  fee_type: 'TEXT',
+  fee_percentage: 'REAL',
+  down_payment: 'REAL'
+});
+
 // Cria o usuario administrador no primeiro start, se ainda nao houver nenhum usuario
 const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 if (userCount === 0) {

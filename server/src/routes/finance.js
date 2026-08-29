@@ -1,11 +1,12 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAuthFlexible } = require('../middleware/auth');
+const { renderReceiptHtml } = require('../utils/receipt');
+const whatsapp = require('../utils/whatsapp');
 
 const router = express.Router();
-router.use(requireAuth);
 
-router.get('/', (req, res) => {
+router.get('/', requireAuth, (req, res) => {
   const { type, status, client_id } = req.query;
   let sql = 'SELECT finance_entries.*, clients.name AS client_name FROM finance_entries LEFT JOIN clients ON clients.id = finance_entries.client_id WHERE 1=1';
   const params = [];
@@ -16,7 +17,7 @@ router.get('/', (req, res) => {
   res.json(db.prepare(sql).all(...params));
 });
 
-router.get('/summary', (req, res) => {
+router.get('/summary', requireAuth, (req, res) => {
   const receivable = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente'`).get().total;
   const overdue = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente' AND due_date < date('now')`).get().total;
   const payable = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='pagar' AND status='pendente'`).get().total;
@@ -24,7 +25,7 @@ router.get('/summary', (req, res) => {
   res.json({ receivable, overdue, payable, receivedThisMonth });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireAuth, (req, res) => {
   const b = req.body || {};
   if (!b.description || !b.amount || !b.type) {
     return res.status(400).json({ error: 'Descricao, valor e tipo (receber/pagar) sao obrigatorios.' });
@@ -47,7 +48,7 @@ router.post('/', (req, res) => {
   res.status(201).json(db.prepare('SELECT * FROM finance_entries WHERE id = ?').get(info.lastInsertRowid));
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM finance_entries WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
   const b = { ...existing, ...req.body, updated_at: new Date().toISOString() };
@@ -59,9 +60,52 @@ router.put('/:id', (req, res) => {
   res.json(db.prepare('SELECT * FROM finance_entries WHERE id = ?').get(req.params.id));
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM finance_entries WHERE id = ?').run(req.params.id);
   res.status(204).end();
+});
+
+// Recibo em HTML (imprimivel / "salvar como PDF" pelo navegador) para um
+// lancamento financeiro - usado principalmente para o valor de entrada dos
+// honorarios. Usa requireAuthFlexible porque este link e aberto direto em
+// nova aba do navegador (sem poder enviar o header Authorization).
+router.get('/:id/receipt', requireAuthFlexible, (req, res) => {
+  const entry = db.prepare(`
+    SELECT finance_entries.*, clients.name AS client_name, clients.document AS client_document,
+      processes.number AS process_number
+    FROM finance_entries
+    LEFT JOIN clients ON clients.id = finance_entries.client_id
+    LEFT JOIN processes ON processes.id = finance_entries.process_id
+    WHERE finance_entries.id = ?
+  `).get(req.params.id);
+  if (!entry) return res.status(404).send('Lançamento não encontrado.');
+
+  const html = renderReceiptHtml({
+    clientName: entry.client_name || 'Cliente',
+    clientDocument: entry.client_document,
+    amount: entry.amount,
+    description: entry.description,
+    processNumber: entry.process_number,
+    receiptNumber: String(entry.id).padStart(6, '0'),
+    date: entry.paid_date || entry.created_at
+  });
+  res.set('Content-Type', 'text/html; charset=utf-8').send(html);
+});
+
+// Link do WhatsApp avisando o cliente que o recibo esta pronto (o recibo em
+// si precisa ser aberto/impresso/salvo e anexado manualmente na conversa -
+// o link de "clique para enviar" do WhatsApp so preenche o texto).
+router.get('/:id/receipt-whatsapp-link', requireAuth, (req, res) => {
+  const entry = db.prepare(`
+    SELECT finance_entries.*, clients.name AS client_name, clients.phone AS client_phone
+    FROM finance_entries LEFT JOIN clients ON clients.id = finance_entries.client_id
+    WHERE finance_entries.id = ?
+  `).get(req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+  const link = whatsapp.buildWhatsappLink(entry.client_phone, whatsapp.receiptReadyMessage({
+    clientName: entry.client_name, amount: entry.amount
+  }));
+  res.json({ whatsapp_link: link });
 });
 
 module.exports = router;

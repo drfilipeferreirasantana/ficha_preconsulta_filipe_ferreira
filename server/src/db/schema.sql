@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS processes (
   next_deadline_desc TEXT,
   monitoring_mode TEXT NOT NULL DEFAULT 'manual', -- manual | automatico
   last_sync_at TEXT,
+  case_value REAL,             -- valor da causa
+  fee_type TEXT,                -- percentual | fixo
+  fee_percentage REAL,          -- % sobre o valor da causa/exito, quando fee_type='percentual'
+  down_payment REAL,            -- valor de entrada recebido no fechamento do contrato
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
