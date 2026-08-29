@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel do Escritório - Filipe Ferreira Advogados</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -12,8 +12,26 @@
 <!-- LOGIN -->
 <div id="login-screen" class="login-screen">
   <div class="login-card">
-    <h1>Painel do Escritório</h1>
-    <div class="sub">Filipe Ferreira Advogados · OAB/ES 37.159</div>
+    <div class="login-brand">
+      <svg width="56" height="56" viewBox="0 0 100 100" fill="none">
+        <defs>
+          <linearGradient id="mark-grad" x1="0" y1="0" x2="100" y2="100">
+            <stop offset="0" stop-color="#39414a"/>
+            <stop offset="1" stop-color="#6d7c84"/>
+          </linearGradient>
+        </defs>
+        <polygon points="50,8 87,68 13,68" fill="none" stroke="url(#mark-grad)" stroke-width="6" stroke-linejoin="miter"/>
+        <polygon points="50,92 13,32 87,32" fill="none" stroke="url(#mark-grad)" stroke-width="6" stroke-linejoin="miter"/>
+        <line x1="35" y1="42" x2="35" y2="55" stroke="url(#mark-grad)" stroke-width="2.5"/>
+        <line x1="65" y1="42" x2="65" y2="55" stroke="url(#mark-grad)" stroke-width="2.5"/>
+        <path d="M29,55 Q35,61 41,55" stroke="url(#mark-grad)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M59,55 Q65,61 71,55" stroke="url(#mark-grad)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <line x1="50" y1="38" x2="50" y2="66" stroke="url(#mark-grad)" stroke-width="2.5"/>
+        <rect x="42" y="66" width="16" height="3" rx="1.5" fill="url(#mark-grad)"/>
+      </svg>
+    </div>
+    <h1>Filipe Ferreira</h1>
+    <div class="sub">Advogado &amp; Associados · OAB/ES 37.159</div>
     <form id="login-form">
       <div class="field">
         <label>E-mail</label>
@@ -33,10 +51,21 @@
 <div id="app" class="app">
   <div class="sidebar">
     <div class="brand">
-      <div class="brand-mark">FF</div>
+      <div class="brand-mark">
+        <svg width="34" height="34" viewBox="0 0 100 100" fill="none">
+          <polygon points="50,8 87,68 13,68" fill="none" stroke="#fffaf5" stroke-width="7" stroke-linejoin="miter"/>
+          <polygon points="50,92 13,32 87,32" fill="none" stroke="#fffaf5" stroke-width="7" stroke-linejoin="miter"/>
+          <line x1="35" y1="42" x2="35" y2="55" stroke="#fffaf5" stroke-width="3"/>
+          <line x1="65" y1="42" x2="65" y2="55" stroke="#fffaf5" stroke-width="3"/>
+          <path d="M29,55 Q35,61 41,55" stroke="#fffaf5" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <path d="M59,55 Q65,61 71,55" stroke="#fffaf5" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <line x1="50" y1="38" x2="50" y2="66" stroke="#fffaf5" stroke-width="3"/>
+          <rect x="42" y="66" width="16" height="3.5" rx="1.5" fill="#fffaf5"/>
+        </svg>
+      </div>
       <div>
-        <div class="name">Painel do Escritório</div>
-        <div class="oab">OAB/ES 37.159</div>
+        <div class="name">Filipe Ferreira</div>
+        <div class="oab">ADVOGADO &amp; ASSOCIADOS · OAB/ES 37.159</div>
       </div>
     </div>
     <div class="nav-item active" data-page="dashboard"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg> Painel</div>
