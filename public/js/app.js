@@ -231,8 +231,8 @@
   async function loadProcesses() {
     const status = await api('/integrations/status');
     document.getElementById('pje-notice').innerHTML = status.djen.configured
-      ? '🔎 Monitoramento automático via DJEN ativo — novas intimações de qualquer tribunal do país aparecem aqui e em Notificações.'
-      : '⚠️ Monitoramento automático de tribunais ainda não configurado (defina ADVOGADO_OAB_NUMERO/UF no servidor). Por enquanto, os andamentos são cadastrados manualmente.';
+      ? 'Monitoramento automático via DJEN ativo — novas intimações de qualquer tribunal do país aparecem aqui e em Notificações.'
+      : 'Monitoramento automático de tribunais ainda não configurado (defina ADVOGADO_OAB_NUMERO/UF no servidor). Por enquanto, os andamentos são cadastrados manualmente.';
 
     const processes = await api('/processes');
     const tbody = document.querySelector('#tbl-processes tbody');
@@ -243,7 +243,7 @@
         <td>${esc(p.phase || '—')}</td>
         <td>${badge(p.status, p.status === 'ativo' ? 'ativo' : 'inativo')}</td>
         <td>${p.next_deadline ? dateBR(p.next_deadline) + (p.next_deadline_desc ? `<div class="muted">${esc(p.next_deadline_desc)}</div>` : '') : '—'}</td>
-        <td class="muted">${p.monitoring_mode === 'automatico' ? '🔎 automático' : '✍️ manual'}</td>
+        <td class="muted">${p.monitoring_mode === 'automatico' ? 'automático' : 'manual'}</td>
         <td class="row-actions">
           <span class="link-btn" data-view-process="${p.id}">ver</span>
           <span class="link-btn" data-edit-process="${p.id}">editar</span>
@@ -359,7 +359,7 @@
       <tr>
         <td>${esc(f.description)}${f.category ? `<div class="muted">${esc(f.category)}</div>` : ''}</td>
         <td>${esc(f.client_name || '—')}</td>
-        <td>${f.type === 'receber' ? '💰 receber' : '📤 pagar'}</td>
+        <td>${f.type === 'receber' ? 'a receber' : 'a pagar'}</td>
         <td>${money(f.amount)}</td>
         <td>${dateBR(f.due_date)}</td>
         <td>${badge(f.status, f.status)}</td>
@@ -488,7 +488,7 @@
 
     const status = await api('/integrations/status').catch(() => null);
     const syncBtnHtml = status && status.djen.configured
-      ? '<button class="btn btn-outline" id="btn-sync-djen" style="margin-bottom:1rem">🔄 Buscar novas intimações agora (DJEN)</button>'
+      ? '<button class="btn btn-outline" id="btn-sync-djen" style="margin-bottom:1rem">Buscar novas intimações agora (DJEN)</button>'
       : '<div class="notice">Integração automática com o DJEN não configurada neste servidor (variáveis ADVOGADO_OAB_NUMERO / ADVOGADO_OAB_UF). Notificações abaixo são geradas pelo próprio sistema (ex: novos leads).</div>';
 
     const listHtml = list.length ? list.map((n) => `
