@@ -33,6 +33,25 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // ---------- máscara de moeda (R$ 1.234,56) para inputs de valor ----------
+  // O input fica type="text": digita-se só números e o valor é formatado da
+  // direita para a esquerda (como em caixas eletrônicos/apps bancários).
+  function attachMoneyMask(el) {
+    el.addEventListener('input', () => {
+      const digits = el.value.replace(/\D/g, '');
+      if (!digits) { el.value = ''; return; }
+      el.value = (parseInt(digits, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    });
+  }
+  function getMoneyValue(el) {
+    if (!el || !el.value) return null;
+    const digits = el.value.replace(/\D/g, '');
+    return digits ? parseInt(digits, 10) / 100 : null;
+  }
+  function setMoneyValue(el, num) {
+    el.value = (num === null || num === undefined || num === '') ? '' : Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   // ---------- auth ----------
   function logout() {
     TOKEN = null; ME = null;
@@ -256,83 +275,92 @@
 
   document.getElementById('btn-new-process').addEventListener('click', () => openProcessModal());
 
-  function feeFieldsHtml() {
+  function feeFieldsHtml(p) {
+    p = p || {};
+    const isEdit = Boolean(p.id);
     return `
       <div class="section-title">Valor da causa e honorários</div>
       <div class="g2">
-        <div class="field"><label>Valor da causa (R$)</label><input type="number" step="0.01" id="f-case_value"></div>
-        <div class="field"><label>Entrada recebida (R$)</label><input type="number" step="0.01" id="f-down_payment">
-          <span class="muted">Se preenchido, gera lançamento "pago" no financeiro + recibo para enviar ao cliente.</span>
+        <div class="field"><label>Valor da causa (R$)</label><input type="text" inputmode="decimal" id="f-case_value" placeholder="0,00"></div>
+        <div class="field"><label>Entrada ${isEdit ? 'recebida' : 'recebida no fechamento'} (R$)</label><input type="text" inputmode="decimal" id="f-down_payment" placeholder="0,00">
+          <span class="muted">${isEdit ? 'Só corrige o valor guardado no processo; não recria o lançamento no financeiro.' : 'Se preenchido, gera lançamento "pago" no financeiro + recibo para enviar ao cliente.'}</span>
         </div>
       </div>
       <div class="field">
         <label>Honorários</label>
         <div class="rr" style="display:flex;gap:10px;margin-top:4px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="percentual" checked> % sobre o valor da causa/êxito</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="fixo"> Valor(es) fixo(s) a receber</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="percentual" ${p.fee_type !== 'fixo' ? 'checked' : ''}> % sobre o valor da causa/êxito</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="radio" name="fee_type" value="fixo" ${p.fee_type === 'fixo' ? 'checked' : ''}> Valor(es) fixo(s) a receber</label>
         </div>
       </div>
-      <div id="fee-percentual-block" class="field">
+      <div id="fee-percentual-block" class="field" style="display:${p.fee_type === 'fixo' ? 'none' : 'block'}">
         <label>Percentual (%)</label>
-        <input type="number" step="0.1" id="f-fee_percentage" placeholder="ex: 20">
-        <span class="muted">Gera um lançamento "a receber" pendente, com valor estimado, até a confirmação do êxito.</span>
+        <input type="number" step="0.1" id="f-fee_percentage" placeholder="ex: 20" value="${p.fee_percentage != null ? p.fee_percentage : ''}">
+        <span class="muted">${isEdit ? 'Corrige o percentual guardado no processo.' : 'Gera um lançamento "a receber" pendente, com valor estimado, até a confirmação do êxito.'}</span>
       </div>
-      <div id="fee-fixo-block" class="field" style="display:none">
-        <label>Valores a receber</label>
-        <div id="fixed-fees-list"></div>
-        <button type="button" class="btn btn-outline" id="btn-add-fee-row" style="margin-top:6px">+ Adicionar valor</button>
+      <div id="fee-fixo-block" class="field" style="display:${p.fee_type === 'fixo' ? 'block' : 'none'}">
+        ${isEdit ? `
+          <span class="muted">Para lançar novos valores fixos a receber ou corrigir os já criados, use a aba Financeiro (cada lançamento pode ser editado ou excluído lá).</span>
+        ` : `
+          <label>Valores a receber</label>
+          <div id="fixed-fees-list"></div>
+          <button type="button" class="btn btn-outline" id="btn-add-fee-row" style="margin-top:6px">+ Adicionar valor</button>
+        `}
       </div>
     `;
   }
 
   function fixedFeeRowHtml(idx) {
     return `
-      <div class="g2 fee-row" data-idx="${idx}" style="align-items:end;margin-bottom:6px">
-        <div class="field" style="margin-bottom:0"><label>Descrição</label><input type="text" class="fee-desc" placeholder="ex: 1ª parcela dos honorários"></div>
-        <div class="field" style="margin-bottom:0"><label>Valor (R$) / Vencimento</label>
-          <div style="display:flex;gap:6px">
-            <input type="number" step="0.01" class="fee-amount" style="flex:1">
-            <input type="date" class="fee-due" style="flex:1">
-          </div>
+      <div class="fee-row" data-idx="${idx}" style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px">
+        <div class="field" style="margin-bottom:8px"><label>Descrição</label><input type="text" class="fee-desc" placeholder="ex: 1ª parcela dos honorários"></div>
+        <div class="g2">
+          <div class="field" style="margin-bottom:0"><label>Valor (R$)</label><input type="text" inputmode="decimal" class="fee-amount" placeholder="0,00"></div>
+          <div class="field" style="margin-bottom:0"><label>Vencimento</label><input type="date" class="fee-due"></div>
         </div>
       </div>`;
   }
 
   function wireFeeFieldEvents(container) {
+    attachMoneyMask(container.querySelector('#f-case_value'));
+    attachMoneyMask(container.querySelector('#f-down_payment'));
     const radios = container.querySelectorAll('input[name="fee_type"]');
     const percBlock = container.querySelector('#fee-percentual-block');
     const fixoBlock = container.querySelector('#fee-fixo-block');
     radios.forEach((r) => r.addEventListener('change', () => {
-      percBlock.style.display = r.value === 'percentual' && r.checked ? 'block' : percBlock.style.display;
       if (r.checked) {
         percBlock.style.display = r.value === 'percentual' ? 'block' : 'none';
         fixoBlock.style.display = r.value === 'fixo' ? 'block' : 'none';
       }
     }));
     const list = container.querySelector('#fixed-fees-list');
-    let feeRowCount = 0;
-    function addFeeRow() {
-      const div = document.createElement('div');
-      div.innerHTML = fixedFeeRowHtml(feeRowCount++);
-      list.appendChild(div.firstElementChild);
+    if (list) {
+      let feeRowCount = 0;
+      function addFeeRow() {
+        const div = document.createElement('div');
+        div.innerHTML = fixedFeeRowHtml(feeRowCount++);
+        const row = div.firstElementChild;
+        list.appendChild(row);
+        attachMoneyMask(row.querySelector('.fee-amount'));
+      }
+      container.querySelector('#btn-add-fee-row').addEventListener('click', addFeeRow);
+      addFeeRow();
     }
-    container.querySelector('#btn-add-fee-row').addEventListener('click', addFeeRow);
-    addFeeRow();
   }
 
   function readFeeFields(container) {
     const feeType = container.querySelector('input[name="fee_type"]:checked').value;
     const result = {
-      case_value: parseFloat(container.querySelector('#f-case_value').value) || null,
-      down_payment: parseFloat(container.querySelector('#f-down_payment').value) || null,
+      case_value: getMoneyValue(container.querySelector('#f-case_value')),
+      down_payment: getMoneyValue(container.querySelector('#f-down_payment')),
       fee_type: feeType
     };
     if (feeType === 'percentual') {
       result.fee_percentage = parseFloat(container.querySelector('#f-fee_percentage').value) || null;
-    } else {
+    } else if (container.querySelector('.fee-row')) {
       result.fixed_fees = Array.from(container.querySelectorAll('.fee-row')).map((row) => ({
         description: row.querySelector('.fee-desc').value.trim(),
-        amount: parseFloat(row.querySelector('.fee-amount').value) || null,
+        amount: getMoneyValue(row.querySelector('.fee-amount')),
         due_date: row.querySelector('.fee-due').value || null
       })).filter((f) => f.amount);
     }
@@ -390,7 +418,7 @@
           <div class="field"><label>Próximo prazo</label><input type="date" id="f-next_deadline" value="${p.next_deadline ? String(p.next_deadline).slice(0, 10) : ''}"></div>
           <div class="field"><label>Descrição do prazo</label><input id="f-next_deadline_desc" value="${esc(p.next_deadline_desc || '')}"></div>
         </div>
-        ${id ? '' : feeFieldsHtml()}
+        ${feeFieldsHtml(id ? { ...p, id } : {})}
         <div class="modal-foot">
           <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
           <button type="submit" class="btn btn-gold">Salvar</button>
@@ -402,6 +430,9 @@
 
     if (id) {
       // edicao: select ja populado com options
+      setMoneyValue(form.querySelector('#f-case_value'), p.case_value);
+      setMoneyValue(form.querySelector('#f-down_payment'), p.down_payment);
+      wireFeeFieldEvents(form);
     } else {
       const existingBlock = document.getElementById('client-existing-block');
       existingBlock.innerHTML = `<select id="f-client_id" required>${await clientOptions()}</select>`;
@@ -432,6 +463,8 @@
 
       if (id) {
         payload.client_id = document.getElementById('f-client_id').value;
+        Object.assign(payload, readFeeFields(form));
+        delete payload.fixed_fees; // edicao nao gera novos lancamentos automaticamente
         await api('/processes/' + id, { method: 'PUT', body: JSON.stringify(payload) });
         closeModal();
         loadProcesses();
@@ -564,7 +597,7 @@
         </div>
         <div class="field"><label>Descrição</label><input id="f-description" required></div>
         <div class="g2">
-          <div class="field"><label>Valor (R$)</label><input type="number" step="0.01" id="f-amount" required></div>
+          <div class="field"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="f-amount" placeholder="0,00" required></div>
           <div class="field"><label>Vencimento</label><input type="date" id="f-due_date"></div>
         </div>
         <div class="field"><label>Cliente (opcional)</label><select id="f-client_id"><option value="">—</option>${options}</select></div>
@@ -574,6 +607,7 @@
         </div>
       </form>
     `);
+    attachMoneyMask(document.getElementById('f-amount'));
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
     document.getElementById('finance-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -581,7 +615,7 @@
         type: document.getElementById('f-type').value,
         category: document.getElementById('f-category').value.trim(),
         description: document.getElementById('f-description').value.trim(),
-        amount: parseFloat(document.getElementById('f-amount').value),
+        amount: getMoneyValue(document.getElementById('f-amount')),
         due_date: document.getElementById('f-due_date').value || null,
         client_id: document.getElementById('f-client_id').value || null
       };

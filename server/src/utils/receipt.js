@@ -57,47 +57,56 @@ function dateBR(d) {
 }
 
 function renderReceiptHtml({ clientName, clientDocument, amount, description, processNumber, receiptNumber, date }) {
+  const motivo = description || 'Entrada dos Honorários Pró-labore Advocatícios';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <title>Recibo #${receiptNumber}</title>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body{font-family:Georgia,'Times New Roman',serif;background:#f2f2f2;margin:0;padding:2rem}
-  .sheet{max-width:720px;margin:0 auto;background:#fff;padding:3rem;border:1px solid #ccc}
-  .head{text-align:center;margin-bottom:2rem;border-bottom:2px solid #39414a;padding-bottom:1rem}
-  .head h1{font-size:20px;letter-spacing:.1em;color:#39414a;margin:0}
-  .head p{font-size:11px;color:#666;margin-top:4px}
-  .title{text-align:center;font-size:16px;letter-spacing:.2em;margin:2rem 0;color:#39414a}
-  .amount{text-align:center;font-size:28px;font-weight:bold;margin:1rem 0;color:#39414a}
-  p.body-text{font-size:14px;line-height:1.9;color:#222;text-align:justify}
-  .meta{margin-top:2.5rem;font-size:12px;color:#555}
-  .sign{margin-top:4rem;text-align:center}
-  .sign .line{width:280px;border-top:1px solid #333;margin:0 auto 6px}
-  .sign p{font-size:12px;margin:2px 0}
+  body{font-family:'Montserrat',Georgia,serif;background:#f2f2f2;margin:0;padding:2rem}
+  .sheet{max-width:720px;margin:0 auto;background:#fff;border:1px solid #ddd;overflow:hidden}
+  .sheet-body{padding:3rem 3rem 2rem}
+  .head{text-align:center;margin-bottom:2rem;border-bottom:2px solid #39414a;padding-bottom:1.25rem}
+  .head h1{font-size:19px;letter-spacing:.1em;color:#39414a;margin:0;font-weight:600}
+  .head p{font-size:11px;color:#666;margin-top:4px;letter-spacing:.05em}
+  .title{text-align:center;font-size:15px;letter-spacing:.2em;margin:2rem 0 1.5rem;color:#39414a;font-weight:600}
+  .amount{text-align:center;font-size:30px;font-weight:700;margin:0 0 1.5rem;color:#39414a;font-family:Georgia,serif}
+  p.body-text{font-size:14px;line-height:1.9;color:#222;text-align:justify;font-family:Georgia,serif}
+  .meta{margin-top:2rem;font-size:12px;color:#555}
+  .sign{margin-top:3.5rem;text-align:center}
+  .sign .signature{font-family:'Dancing Script',cursive;font-size:38px;color:#1a1a2a;margin-bottom:-4px}
+  .sign .line{width:280px;border-top:1px solid #333;margin:6px auto 6px}
+  .sign p{font-size:12px;margin:2px 0;color:#333}
+  .footer-bar img{width:100%;display:block}
   @media print{body{background:#fff;padding:0}.sheet{border:none}}
 </style>
 </head>
 <body>
   <div class="sheet">
-    <div class="head">
-      <h1>FILIPE FERREIRA ADVOGADO &amp; ASSOCIADOS</h1>
-      <p>OAB/ES 37.159</p>
+    <div class="sheet-body">
+      <div class="head">
+        <h1>FILIPE FERREIRA ADVOGADO &amp; ASSOCIADOS</h1>
+        <p>OAB/ES 37.159</p>
+      </div>
+      <div class="title">RECIBO Nº ${receiptNumber}</div>
+      <div class="amount">${money(amount)}</div>
+      <p class="body-text">
+        Recebemos de <strong>${clientName}</strong>${clientDocument ? `, portador(a) do documento nº ${clientDocument},` : ''}
+        a quantia de <strong>${money(amount)}</strong> (${valorPorExtenso(amount)}), referente a ${motivo}.
+      </p>
+      <p class="body-text">Para clareza, firmamos o presente recibo.</p>
+      ${processNumber ? `<div class="meta">Processo relacionado: nº ${processNumber}</div>` : ''}
+      <div class="meta">Vitória/ES, ${dateBR(date)}.</div>
+      <div class="sign">
+        <div class="signature">Filipe Ferreira</div>
+        <div class="line"></div>
+        <p>Filipe Ferreira</p>
+        <p>OAB/ES 37.159</p>
+      </div>
     </div>
-    <div class="title">RECIBO Nº ${receiptNumber}</div>
-    <div class="amount">${money(amount)}</div>
-    <p class="body-text">
-      Recebemos de <strong>${clientName}</strong>${clientDocument ? `, portador(a) do documento nº ${clientDocument},` : ''}
-      a quantia de <strong>${money(amount)}</strong> (${valorPorExtenso(amount)}), referente a
-      ${description || 'honorários advocatícios'}${processNumber ? `, relativo ao processo nº ${processNumber}` : ''}.
-    </p>
-    <p class="body-text">Para clareza, firmamos o presente recibo.</p>
-    <div class="meta">Vitória/ES, ${dateBR(date)}.</div>
-    <div class="sign">
-      <div class="line"></div>
-      <p>Filipe Ferreira</p>
-      <p>OAB/ES 37.159</p>
-    </div>
+    <div class="footer-bar"><img src="/assets/rodape-contato.png" alt=""></div>
   </div>
 </body>
 </html>`;

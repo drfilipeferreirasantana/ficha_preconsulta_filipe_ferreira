@@ -100,7 +100,7 @@ router.post('/', (req, res) => {
     if (b.down_payment && Number(b.down_payment) > 0) {
       const info = insertFinance.run({
         client_id: clientId, process_id: processId,
-        category: 'entrada', description: `Entrada - honorários${b.number ? ' (processo ' + b.number + ')' : ''}`,
+        category: 'entrada', description: `Entrada dos Honorários Pró-labore Advocatícios`,
         amount: Number(b.down_payment), due_date: null, status: 'pago',
         paid_date: new Date().toISOString().slice(0, 10)
       });
@@ -156,7 +156,8 @@ router.post('/', (req, res) => {
     process,
     finance,
     whatsapp_link: whatsapp.buildWhatsappLink(client.phone, whatsapp.processRegisteredMessage({
-      clientName: client.name, processNumber: process.number, court: process.court
+      clientName: client.name, processNumber: process.number, court: process.court,
+      caseValue: process.case_value, feeType: process.fee_type, feePercentage: process.fee_percentage
     })),
     receipt_url: receiptEntry ? `/api/finance/${receiptEntry.id}/receipt` : null
   });

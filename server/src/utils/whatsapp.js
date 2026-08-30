@@ -21,16 +21,25 @@ function buildWhatsappLink(phone, message) {
   return `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message)}`;
 }
 
-function processRegisteredMessage({ clientName, processNumber, court }) {
-  return [
+function money(v) {
+  return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function processRegisteredMessage({ clientName, processNumber, court, caseValue, feeType, feePercentage }) {
+  const lines = [
     `Olá, ${clientName}!`,
     ``,
-    `Seu processo${processNumber ? ` nº ${processNumber}` : ''}${court ? ` (${court})` : ''} foi cadastrado em nosso sistema de acompanhamento.`,
+    `Seu processo${processNumber ? ` nº ${processNumber}` : ''}${court ? ` (${court})` : ''} foi cadastrado em nosso sistema de acompanhamento.`
+  ];
+  if (caseValue) lines.push(`Valor da causa: ${money(caseValue)}`);
+  if (feeType === 'percentual' && feePercentage) lines.push(`Honorários: ${feePercentage}% sobre o valor da causa/êxito.`);
+  lines.push(
     `A partir de agora você será informado sempre que houver uma nova movimentação processual.`,
     ``,
     `Att.,`,
     `Filipe Ferreira Advogados · OAB/ES 37.159`
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 function processUpdateMessage({ clientName, processNumber, description }) {
