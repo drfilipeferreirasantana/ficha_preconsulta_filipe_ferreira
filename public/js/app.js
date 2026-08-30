@@ -648,12 +648,12 @@
     const noticeEl = document.getElementById('google-calendar-notice');
     if (status && status.google_calendar.configured) {
       if (status.google_calendar.connected) {
-        noticeEl.innerHTML = `Google Agenda conectado — audiências marcadas aqui aparecem automaticamente na sua agenda. <span class="link-btn" id="btn-google-disconnect" style="margin-left:10px;color:var(--danger)">desconectar</span>`;
+        noticeEl.innerHTML = `Google Agenda conectado — toda tarefa com prazo vira evento na sua agenda automaticamente (audiências com horário exato, as demais como evento de dia inteiro). <span class="link-btn" id="btn-google-disconnect" style="margin-left:10px;color:var(--danger)">desconectar</span>`;
       } else {
-        noticeEl.innerHTML = `<button class="btn btn-outline" id="btn-google-connect">Conectar Google Agenda</button> — necessário para audiências criarem evento automaticamente na sua agenda.`;
+        noticeEl.innerHTML = `<button class="btn btn-outline" id="btn-google-connect">Conectar Google Agenda</button> — depois de conectado, toda tarefa com prazo cria um evento automaticamente na sua agenda.`;
       }
     } else {
-      noticeEl.innerHTML = `Integração com o Google Agenda ainda não configurada neste servidor (faltam as credenciais OAuth do Google — ver README). Audiências continuam sendo registradas normalmente no sistema, só não sincronizam com o Google por enquanto.`;
+      noticeEl.innerHTML = `Integração com o Google Agenda ainda não configurada neste servidor (faltam as credenciais OAuth do Google — ver README). As tarefas continuam sendo registradas normalmente no sistema, só não sincronizam com o Google por enquanto.`;
     }
     const connectBtn = document.getElementById('btn-google-connect');
     if (connectBtn) connectBtn.addEventListener('click', async () => {

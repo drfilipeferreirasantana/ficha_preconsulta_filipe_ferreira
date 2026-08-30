@@ -125,21 +125,36 @@ async function apiRequest(method, path, body) {
   return resp.json();
 }
 
-async function createEvent({ summary, description, startDateTime, endDateTime }) {
+// Monta os campos start/end da API do Google Calendar. Duas formas:
+//  - evento com hora marcada (startDateTime/endDateTime, ex: audiencias)
+//  - evento de dia inteiro (allDayDate = 'YYYY-MM-DD', ex: tarefas com prazo
+//    mas sem horario definido) - o Google exige que o "end.date" seja o dia
+//    SEGUINTE ao inicio (intervalo exclusivo), mesmo para 1 dia so.
+function buildEventTime({ startDateTime, endDateTime, allDayDate }) {
+  if (allDayDate) {
+    const next = new Date(allDayDate + 'T00:00:00');
+    next.setDate(next.getDate() + 1);
+    return { start: { date: allDayDate }, end: { date: next.toISOString().slice(0, 10) } };
+  }
+  return {
+    start: { dateTime: startDateTime, timeZone: TIMEZONE },
+    end: { dateTime: endDateTime, timeZone: TIMEZONE }
+  };
+}
+
+async function createEvent({ summary, description, startDateTime, endDateTime, allDayDate }) {
   return apiRequest('POST', '/calendars/primary/events', {
     summary,
     description,
-    start: { dateTime: startDateTime, timeZone: TIMEZONE },
-    end: { dateTime: endDateTime, timeZone: TIMEZONE }
+    ...buildEventTime({ startDateTime, endDateTime, allDayDate })
   });
 }
 
-async function updateEvent(eventId, { summary, description, startDateTime, endDateTime }) {
+async function updateEvent(eventId, { summary, description, startDateTime, endDateTime, allDayDate }) {
   return apiRequest('PATCH', `/calendars/primary/events/${eventId}`, {
     summary,
     description,
-    start: { dateTime: startDateTime, timeZone: TIMEZONE },
-    end: { dateTime: endDateTime, timeZone: TIMEZONE }
+    ...buildEventTime({ startDateTime, endDateTime, allDayDate })
   });
 }
 
