@@ -28,8 +28,17 @@ app.use('/api/public', publicRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Serve o frontend estatico (app do sistema + ficha de pre-consulta publica)
-app.use(express.static(path.join(__dirname, '..', '..', 'public')));
+// Serve o frontend estatico (app do sistema + ficha de pre-consulta publica).
+// setHeaders evita que o navegador guarde HTML/JS/CSS em cache por muito
+// tempo - sem isso, um deploy novo pode "nao aparecer" pro usuario ate ele
+// forcar um recarregamento (Ctrl+Shift+R), o que gera confusao.
+app.use(express.static(path.join(__dirname, '..', '..', 'public'), {
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 
 app.use((err, req, res, next) => {
   console.error(err);
