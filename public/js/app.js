@@ -112,7 +112,8 @@
       processes: loadProcesses,
       finance: loadFinance,
       tasks: loadTasks,
-      notifications: loadNotifications
+      notifications: loadNotifications,
+      backup: loadBackup
     };
     loaders[page] && loaders[page]();
   }
@@ -826,6 +827,27 @@
   document.getElementById('btn-read-all').addEventListener('click', async () => {
     await api('/notifications/read-all', { method: 'POST' });
     loadNotifications();
+  });
+
+  // ---------- BACKUP ----------
+  function loadBackup() {
+    document.getElementById('btn-backup-export').href = API + '/backup/export?token=' + encodeURIComponent(TOKEN);
+  }
+
+  document.getElementById('btn-backup-import').addEventListener('click', async () => {
+    const input = document.getElementById('backup-file-input');
+    const file = input.files[0];
+    if (!file) { alert('Selecione um arquivo de backup (.json) primeiro.'); return; }
+    if (!confirm('Isso vai apagar e substituir TODOS os dados atuais pelos do arquivo selecionado. Continuar?')) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = await api('/backup/import', { method: 'POST', body: JSON.stringify(data) });
+      const resumo = Object.entries(result.restored).map(([k, v]) => `${k}: ${v}`).join('\n');
+      alert('Backup restaurado com sucesso:\n\n' + resumo);
+    } catch (err) {
+      alert('Erro ao restaurar backup: ' + err.message);
+    }
   });
 
   // ---------- boot ----------

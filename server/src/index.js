@@ -10,6 +10,7 @@ const financeRoutes = require('./routes/finance');
 const taskRoutes = require('./routes/tasks');
 const notificationRoutes = require('./routes/notifications');
 const integrationRoutes = require('./routes/integrations');
+const backupRoutes = require('./routes/backup');
 const publicRoutes = require('./routes/public');
 const djen = require('./integrations/djen');
 
@@ -24,6 +25,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
