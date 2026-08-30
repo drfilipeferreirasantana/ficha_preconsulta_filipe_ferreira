@@ -87,8 +87,21 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date TEXT,
   priority TEXT NOT NULL DEFAULT 'media', -- baixa | media | alta | urgente
   status TEXT NOT NULL DEFAULT 'pendente', -- pendente | em_andamento | concluida
+  is_hearing INTEGER NOT NULL DEFAULT 0,   -- 1 = audiencia/compromisso com hora marcada
+  event_start TEXT,                        -- data/hora inicio (ISO local, ex: 2026-09-29T13:40:00)
+  event_end TEXT,                          -- data/hora fim
+  notify_client INTEGER NOT NULL DEFAULT 0,-- avisar cliente por WhatsApp sobre este evento
+  google_event_id TEXT,                    -- id do evento criado no Google Agenda, se conectado
+  google_event_link TEXT,                  -- link do evento (htmlLink) retornado pelo Google
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Configuracoes de integracao do escritorio (chave/valor) - usado hoje para
+-- guardar o refresh_token do Google Agenda (ver integrations/googleCalendar.js)
+CREATE TABLE IF NOT EXISTS integration_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
 );
 
 CREATE TABLE IF NOT EXISTS notifications (

@@ -99,6 +99,48 @@ integração adicional seja necessária no futuro:
 Para o caso de uso principal — saber quando sai uma intimação nova — o DJEN
 já resolve sem certificado nenhum.
 
+### Google Agenda — sincronização de audiências/compromissos
+
+Ao marcar uma tarefa como "audiência ou compromisso com hora marcada" na aba
+Gestão, o sistema cria automaticamente um evento na sua Google Agenda (e
+atualiza/remove se a tarefa for editada/excluída). Isso exige uma conexão
+OAuth autorizada por você — não existe uma "chave simples" que crie eventos
+numa agenda pessoal sem essa autorização explícita do dono da conta.
+
+**Passo a passo para configurar (uma vez só), no [Google Cloud Console](https://console.cloud.google.com/):**
+
+1. Crie um projeto novo (ou use um existente).
+2. Vá em **"APIs e serviços" → "Biblioteca"**, procure por **"Google Calendar API"** e clique em **Ativar**.
+3. Vá em **"APIs e serviços" → "Tela de consentimento OAuth"**:
+   - Tipo de usuário: **Externo**.
+   - Preencha nome do app (ex: "Sistema Filipe Ferreira Advogados") e seu e-mail.
+   - Em "Escopos", não precisa adicionar nada manualmente.
+   - Em "Usuários de teste", adicione o seu próprio e-mail do Google (enquanto o app estiver em modo de teste, só e-mails cadastrados aqui conseguem autorizar).
+4. Vá em **"APIs e serviços" → "Credenciais" → "Criar credenciais" → "ID do cliente OAuth"**:
+   - Tipo de aplicativo: **Aplicativo da Web**.
+   - Em "URIs de redirecionamento autorizados", adicione:
+     `https://<seu-app>.onrender.com/api/integrations/google/callback`
+     (troque pela URL real do seu serviço no Render).
+5. O Google mostra um **Client ID** e um **Client Secret** — copie os dois.
+6. No Render, vá em **Environment** do seu serviço e adicione:
+   ```
+   GOOGLE_CLIENT_ID=<o Client ID copiado>
+   GOOGLE_CLIENT_SECRET=<o Client Secret copiado>
+   GOOGLE_REDIRECT_URI=https://<seu-app>.onrender.com/api/integrations/google/callback
+   ```
+7. Salve (o Render reinicia o serviço sozinho).
+8. No sistema, vá na aba **Gestão** e clique em **"Conectar Google Agenda"** — você será levado à tela de permissão do Google; autorize com a mesma conta cadastrada como usuário de teste no passo 3.
+
+Depois disso, toda audiência marcada como tal (com data e horário) cria um
+evento na sua agenda automaticamente, com um link para você conferir e,
+opcionalmente, avisar o cliente pelo WhatsApp com esse mesmo link.
+
+**Limite do modo de teste**: enquanto a tela de consentimento OAuth do Google
+estiver em modo "Teste" (o padrão, sem submeter para verificação do Google),
+o token de acesso deste tipo de app pode expirar a cada ~7 dias, exigindo
+reconectar. Para uso contínuo sem essa limitação, é possível publicar o app
+(Google pode pedir uma verificação, dependendo do escopo usado).
+
 ### PUMA / e-Jud (TJES) e outros sistemas próprios de tribunal
 
 Sistemas proprietários de tribunais estaduais (como o PUMA do TJES) não têm

@@ -55,6 +55,30 @@ function processUpdateMessage({ clientName, processNumber, description }) {
   ].join('\n');
 }
 
+function formatEventDateTime(startIso, endIso) {
+  const start = new Date(startIso);
+  const end = endIso ? new Date(endIso) : null;
+  const opts = { timeZone: 'America/Sao_Paulo' };
+  const weekdayDate = start.toLocaleDateString('pt-BR', { ...opts, weekday: 'long', day: 'numeric', month: 'short' });
+  const startTime = start.toLocaleTimeString('pt-BR', { ...opts, hour: '2-digit', minute: '2-digit' });
+  const endTime = end ? end.toLocaleTimeString('pt-BR', { ...opts, hour: '2-digit', minute: '2-digit' }) : null;
+  return `${weekdayDate} · ${startTime}${endTime ? ' – ' + endTime : ''}`;
+}
+
+function hearingScheduledMessage({ clientName, title, startDateTime, endDateTime, eventLink }) {
+  const lines = [
+    `Olá, ${clientName}!`,
+    ``,
+    title,
+    formatEventDateTime(startDateTime, endDateTime)
+  ];
+  if (eventLink) {
+    lines.push(``, `Confira os detalhes e confirme sua presença:`, eventLink);
+  }
+  lines.push(``, `Att.,`, `Filipe Ferreira Advogados · OAB/ES 37.159`);
+  return lines.join('\n');
+}
+
 function receiptReadyMessage({ clientName, amount }) {
   const money = (Number(amount) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   return [
@@ -67,4 +91,4 @@ function receiptReadyMessage({ clientName, amount }) {
   ].join('\n');
 }
 
-module.exports = { buildWhatsappLink, processRegisteredMessage, processUpdateMessage, receiptReadyMessage };
+module.exports = { buildWhatsappLink, processRegisteredMessage, processUpdateMessage, receiptReadyMessage, hearingScheduledMessage };

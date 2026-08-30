@@ -196,6 +196,12 @@
 
   document.getElementById('btn-new-client').addEventListener('click', () => openClientModal());
 
+  let processSearchTimer;
+  document.getElementById('process-search').addEventListener('input', () => {
+    clearTimeout(processSearchTimer);
+    processSearchTimer = setTimeout(loadProcesses, 300);
+  });
+
   async function openClientModal(id) {
     const c = id ? await api('/clients/' + id) : {};
     openModal(`
@@ -253,7 +259,8 @@
       ? 'Monitoramento automático via DJEN ativo — novas intimações de qualquer tribunal do país aparecem aqui e em Notificações.'
       : 'Monitoramento automático de tribunais ainda não configurado (defina ADVOGADO_OAB_NUMERO/UF no servidor). Por enquanto, os andamentos são cadastrados manualmente.';
 
-    const processes = await api('/processes');
+    const q = document.getElementById('process-search').value.trim();
+    const processes = await api('/processes' + (q ? `?q=${encodeURIComponent(q)}` : ''));
     const tbody = document.querySelector('#tbl-processes tbody');
     tbody.innerHTML = processes.length ? processes.map((p) => `
       <tr>
@@ -386,8 +393,8 @@
           <div id="client-existing-block" class="field"><select id="f-client_id"></select></div>
           <div id="client-new-block" style="display:none">
             <div class="g2">
-              <div class="field"><label>Nome completo</label><input id="f-new-name"></div>
-              <div class="field"><label>WhatsApp</label><input id="f-new-phone" placeholder="(27) 99999-9999"></div>
+              <div class="field"><label>Nome completo</label><input id="f-new-name" required></div>
+              <div class="field"><label>WhatsApp</label><input id="f-new-phone" placeholder="(27) 99999-9999" required></div>
             </div>
             <div class="g2">
               <div class="field"><label>E-mail</label><input type="email" id="f-new-email"></div>
@@ -437,12 +444,20 @@
       const existingBlock = document.getElementById('client-existing-block');
       existingBlock.innerHTML = `<select id="f-client_id" required>${await clientOptions()}</select>`;
       const newBlock = document.getElementById('client-new-block');
+      const existingSelect = document.getElementById('f-client_id');
+      const newNameInput = document.getElementById('f-new-name');
+      const newPhoneInput = document.getElementById('f-new-phone');
+      // Importante: um campo "required" escondido (display:none) trava o
+      // envio do formulário sem nenhum aviso visível ao usuário - por isso
+      // alternamos o atributo required junto com a visibilidade dos blocos.
       form.querySelectorAll('input[name="client_mode"]').forEach((r) => r.addEventListener('change', () => {
-        existingBlock.style.display = r.value === 'existing' && r.checked ? 'block' : existingBlock.style.display;
-        if (r.checked) {
-          existingBlock.style.display = r.value === 'existing' ? 'block' : 'none';
-          newBlock.style.display = r.value === 'new' ? 'block' : 'none';
-        }
+        if (!r.checked) return;
+        const isExisting = r.value === 'existing';
+        existingBlock.style.display = isExisting ? 'block' : 'none';
+        newBlock.style.display = isExisting ? 'none' : 'block';
+        existingSelect.required = isExisting;
+        newNameInput.required = !isExisting;
+        newPhoneInput.required = !isExisting;
       }));
       wireFeeFieldEvents(form);
     }
@@ -627,11 +642,37 @@
 
   // ---------- TAREFAS / GESTÃO ----------
   async function loadTasks() {
-    const tasks = await api('/tasks');
+    const [tasks, status] = await Promise.all([api('/tasks'), api('/integrations/status').catch(() => null)]);
+
+    const noticeEl = document.getElementById('google-calendar-notice');
+    if (status && status.google_calendar.configured) {
+      if (status.google_calendar.connected) {
+        noticeEl.innerHTML = `Google Agenda conectado — audiências marcadas aqui aparecem automaticamente na sua agenda. <span class="link-btn" id="btn-google-disconnect" style="margin-left:10px;color:var(--danger)">desconectar</span>`;
+      } else {
+        noticeEl.innerHTML = `<button class="btn btn-outline" id="btn-google-connect">Conectar Google Agenda</button> — necessário para audiências criarem evento automaticamente na sua agenda.`;
+      }
+    } else {
+      noticeEl.innerHTML = `Integração com o Google Agenda ainda não configurada neste servidor (faltam as credenciais OAuth do Google — ver README). Audiências continuam sendo registradas normalmente no sistema, só não sincronizam com o Google por enquanto.`;
+    }
+    const connectBtn = document.getElementById('btn-google-connect');
+    if (connectBtn) connectBtn.addEventListener('click', async () => {
+      try {
+        const r = await api('/integrations/google/auth-url');
+        window.open(r.url, '_blank');
+      } catch (err) { alert(err.message); }
+    });
+    const disconnectBtn = document.getElementById('btn-google-disconnect');
+    if (disconnectBtn) disconnectBtn.addEventListener('click', async () => {
+      if (confirm('Desconectar o Google Agenda? Audiências futuras deixarão de ser criadas automaticamente na sua agenda.')) {
+        await api('/integrations/google/disconnect', { method: 'POST' });
+        loadTasks();
+      }
+    });
+
     const tbody = document.querySelector('#tbl-tasks tbody');
     tbody.innerHTML = tasks.length ? tasks.map((t) => `
       <tr>
-        <td>${esc(t.title)}${t.description ? `<div class="muted">${esc(t.description)}</div>` : ''}</td>
+        <td>${esc(t.title)}${t.description ? `<div class="muted">${esc(t.description)}</div>` : ''}${t.is_hearing ? '<div class="muted">📅 audiência/compromisso' + (t.google_event_link ? ` · <a href="${t.google_event_link}" target="_blank">ver na agenda</a>` : '') + '</div>' : ''}</td>
         <td>${esc(t.client_name || '—')}</td>
         <td>${dateBR(t.due_date)}</td>
         <td>${badge(t.priority, t.priority)}</td>
@@ -656,15 +697,37 @@
     openModal(`
       <h3>Nova tarefa</h3>
       <form id="task-form">
-        <div class="field"><label>Título</label><input id="f-title" required></div>
+        <div class="field"><label>Título</label><input id="f-title" required placeholder="ex: Audiência de conciliação João (Eletrobom)"></div>
         <div class="field"><label>Descrição</label><textarea id="f-description" rows="2"></textarea></div>
+        <div class="field"><label>Cliente relacionado</label><select id="f-client_id"><option value="">—</option>${options}</select></div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="f-is_hearing" style="width:16px;height:16px"> É uma audiência ou compromisso com hora marcada
+          </label>
+        </div>
+        <div id="hearing-fields" style="display:none">
+          <div class="g2">
+            <div class="field"><label>Data</label><input type="date" id="f-event_date"></div>
+            <div class="field"><label>Horário (início – fim)</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="time" id="f-event_start_time" style="flex:1">
+                <span class="muted">até</span>
+                <input type="time" id="f-event_end_time" style="flex:1">
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="f-notify_client" style="width:16px;height:16px"> Avisar o cliente por WhatsApp sobre este compromisso
+            </label>
+          </div>
+        </div>
         <div class="g2">
-          <div class="field"><label>Prazo</label><input type="date" id="f-due_date"></div>
+          <div class="field"><label>Prazo (para tarefas sem hora marcada)</label><input type="date" id="f-due_date"></div>
           <div class="field"><label>Prioridade</label>
             <select id="f-priority"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
           </div>
         </div>
-        <div class="field"><label>Cliente relacionado (opcional)</label><select id="f-client_id"><option value="">—</option>${options}</select></div>
         <div class="modal-foot">
           <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
           <button type="submit" class="btn btn-gold">Salvar</button>
@@ -672,18 +735,41 @@
       </form>
     `);
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
+
+    const hearingCheckbox = document.getElementById('f-is_hearing');
+    const hearingFields = document.getElementById('hearing-fields');
+    hearingCheckbox.addEventListener('change', () => {
+      hearingFields.style.display = hearingCheckbox.checked ? 'block' : 'none';
+    });
+
     document.getElementById('task-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const isHearing = hearingCheckbox.checked;
       const payload = {
         title: document.getElementById('f-title').value.trim(),
         description: document.getElementById('f-description').value.trim(),
         due_date: document.getElementById('f-due_date').value || null,
         priority: document.getElementById('f-priority').value,
-        client_id: document.getElementById('f-client_id').value || null
+        client_id: document.getElementById('f-client_id').value || null,
+        is_hearing: isHearing
       };
-      await api('/tasks', { method: 'POST', body: JSON.stringify(payload) });
+      if (isHearing) {
+        const date = document.getElementById('f-event_date').value;
+        const startTime = document.getElementById('f-event_start_time').value;
+        const endTime = document.getElementById('f-event_end_time').value;
+        if (!date || !startTime || !endTime) { alert('Preencha data e horário de início/fim da audiência.'); return; }
+        payload.event_start = `${date}T${startTime}:00`;
+        payload.event_end = `${date}T${endTime}:00`;
+        payload.notify_client = document.getElementById('f-notify_client').checked;
+      }
+      const result = await api('/tasks', { method: 'POST', body: JSON.stringify(payload) });
       closeModal();
       loadTasks();
+      if (result.whatsapp_link) {
+        if (confirm('Compromisso salvo. Deseja avisar o cliente agora pelo WhatsApp?')) window.open(result.whatsapp_link, '_blank');
+      } else if (isHearing && payload.notify_client && !result.task.client_phone) {
+        alert('Cliente sem telefone cadastrado — não foi possível gerar o link do WhatsApp.');
+      }
     });
   });
 

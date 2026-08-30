@@ -30,6 +30,14 @@ ensureColumns('processes', {
   fee_percentage: 'REAL',
   down_payment: 'REAL'
 });
+ensureColumns('tasks', {
+  is_hearing: 'INTEGER NOT NULL DEFAULT 0',
+  event_start: 'TEXT',
+  event_end: 'TEXT',
+  notify_client: 'INTEGER NOT NULL DEFAULT 0',
+  google_event_id: 'TEXT',
+  google_event_link: 'TEXT'
+});
 
 // Cria o usuario administrador no primeiro start, se ainda nao houver nenhum usuario
 const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;

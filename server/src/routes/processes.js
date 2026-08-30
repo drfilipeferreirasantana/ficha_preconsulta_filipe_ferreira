@@ -8,7 +8,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/', (req, res) => {
-  const { status, client_id, upcoming } = req.query;
+  const { status, client_id, upcoming, q } = req.query;
   let sql = `
     SELECT processes.*, clients.name AS client_name
     FROM processes JOIN clients ON clients.id = processes.client_id
@@ -17,6 +17,11 @@ router.get('/', (req, res) => {
   if (status) { sql += ' AND processes.status = ?'; params.push(status); }
   if (client_id) { sql += ' AND processes.client_id = ?'; params.push(client_id); }
   if (upcoming) { sql += " AND processes.next_deadline IS NOT NULL AND date(processes.next_deadline) <= date('now', '+' || ? || ' days')"; params.push(Number(upcoming) || 7); }
+  if (q) {
+    sql += ' AND (clients.name LIKE ? OR processes.number LIKE ?)';
+    const like = `%${q}%`;
+    params.push(like, like);
+  }
   sql += ' ORDER BY (processes.next_deadline IS NULL), processes.next_deadline ASC';
   res.json(db.prepare(sql).all(...params));
 });

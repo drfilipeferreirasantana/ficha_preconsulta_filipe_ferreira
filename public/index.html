@@ -119,7 +119,10 @@
     <div class="page" id="page-processes">
       <div class="page-head">
         <h2>Processos</h2>
-        <div class="actions"><button class="btn btn-gold" id="btn-new-process">+ Novo processo</button></div>
+        <div class="actions">
+          <input class="field" style="margin:0" type="text" id="process-search" placeholder="Buscar por nome do cliente ou número do processo">
+          <button class="btn btn-gold" id="btn-new-process">+ Novo processo</button>
+        </div>
       </div>
       <div class="notice" id="pje-notice"></div>
       <div class="panel">
@@ -151,6 +154,7 @@
         <h2>Gestão do Escritório</h2>
         <div class="actions"><button class="btn btn-gold" id="btn-new-task">+ Nova tarefa</button></div>
       </div>
+      <div class="notice" id="google-calendar-notice"></div>
       <div class="panel">
         <div style="overflow-x:auto"><table id="tbl-tasks">
           <thead><tr><th>Tarefa</th><th>Cliente</th><th>Prazo</th><th>Prioridade</th><th>Status</th><th></th></tr></thead>
