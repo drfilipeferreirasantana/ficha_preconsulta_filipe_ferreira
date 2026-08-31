@@ -792,6 +792,7 @@
         ${n.process_number ? `<div style="font-size:11px;color:var(--slate-light);margin-top:4px">Processo ${esc(n.process_number)} · ${esc(n.client_name || '')}</div>` : ''}
         <div style="margin-top:6px;display:flex;gap:14px">
           ${!n.is_read ? `<span class="link-btn" data-mark-read="${n.id}">marcar como lida</span>` : ''}
+          ${n.process_id ? `<span class="link-btn" data-open-process="${n.process_id}">abrir processo</span>` : ''}
           ${n.whatsapp_link ? `<a class="link-btn" target="_blank" href="${n.whatsapp_link}">avisar cliente no WhatsApp</a>` : ''}
         </div>
       </div>`).join('') : '<p class="muted">Nenhuma notificação até o momento.</p>';
@@ -802,14 +803,124 @@
       await api('/notifications/' + el.dataset.markRead + '/read', { method: 'POST' });
       loadNotifications();
     }));
+    document.querySelectorAll('[data-open-process]').forEach((el) => el.addEventListener('click', () => {
+      loadPage('processes');
+      openProcessDetail(el.dataset.openProcess);
+    }));
 
     await loadDjenPanel();
+    await loadMonitorPanel();
   }
 
   document.getElementById('btn-read-all').addEventListener('click', async () => {
     await api('/notifications/read-all', { method: 'POST' });
     loadNotifications();
   });
+
+  // ---------- Processos Monitorados ----------
+  async function loadMonitorPanel() {
+    const processes = await api('/processes');
+    const toggleListEl = document.getElementById('monitor-toggle-list');
+    toggleListEl.innerHTML = processes.length ? `<table><thead><tr><th>Processo</th><th>Cliente</th><th>Monitorar</th></tr></thead><tbody>
+      ${processes.map((p) => `
+        <tr>
+          <td>${esc(p.number || '—')}${!p.number ? '<div class="muted">sem número CNJ — não pode ser monitorado</div>' : ''}</td>
+          <td>${esc(p.client_name)}</td>
+          <td><input type="checkbox" data-monitor-toggle="${p.id}" ${p.monitoring_mode === 'automatico' ? 'checked' : ''} ${!p.number ? 'disabled' : ''} style="width:16px;height:16px"></td>
+        </tr>`).join('')}
+    </tbody></table>` : '<p class="muted">Nenhum processo cadastrado ainda.</p>';
+
+    toggleListEl.querySelectorAll('[data-monitor-toggle]').forEach((el) => el.addEventListener('change', async () => {
+      try {
+        await api('/processes/' + el.dataset.monitorToggle, {
+          method: 'PUT', body: JSON.stringify({ monitoring_mode: el.checked ? 'automatico' : 'manual' })
+        });
+        loadMonitorPanel();
+      } catch (err) {
+        alert(err.message);
+        el.checked = !el.checked;
+      }
+    }));
+
+    const monitored = await api('/integrations/djen/monitored');
+    const monitorListEl = document.getElementById('monitor-list');
+    monitorListEl.innerHTML = monitored.length ? `<table><thead><tr><th>Processo</th><th>Cliente</th><th>Última busca</th><th>Última movimentação</th><th>Status</th><th></th></tr></thead><tbody>
+      ${monitored.map((p) => `
+        <tr>
+          <td>${esc(p.number)}</td>
+          <td>${esc(p.client_name)}</td>
+          <td>${p.last_sync_at ? dateBR(p.last_sync_at) : '—'}</td>
+          <td>${p.last_movement_date ? dateBR(p.last_movement_date) : '—'}</td>
+          <td>${p.last_monitor_status ? badge(p.last_monitor_status === 'erro' ? p.last_monitor_error || 'erro' : p.last_monitor_status, p.last_monitor_status === 'erro' ? 'atrasado' : (p.last_monitor_status === 'sucesso' ? 'ativo' : 'inativo')) : '<span class="muted">ainda não verificado</span>'}</td>
+          <td><span class="link-btn" data-monitor-off="${p.id}">desativar</span></td>
+        </tr>`).join('')}
+    </tbody></table>` : '<p class="muted">Nenhum processo monitorado no momento.</p>';
+
+    monitorListEl.querySelectorAll('[data-monitor-off]').forEach((el) => el.addEventListener('click', async () => {
+      await api('/processes/' + el.dataset.monitorOff, { method: 'PUT', body: JSON.stringify({ monitoring_mode: 'manual' }) });
+      loadMonitorPanel();
+    }));
+  }
+
+  document.getElementById('btn-monitor-search').addEventListener('click', async (e) => {
+    const btn = e.target;
+    const days = Number(document.getElementById('monitor-period').value);
+    const notice = document.getElementById('monitor-status-notice');
+    btn.disabled = true; btn.textContent = 'Verificando...';
+    notice.innerHTML = 'Buscando pelo servidor...';
+    try {
+      const r = await api(`/integrations/djen/monitor/search?days=${days}`, { method: 'POST' });
+      if (r.checked > 0 && r.errors.length === r.checked) {
+        notice.innerHTML = 'A busca pelo servidor falhou para todos os processos (provável bloqueio de rede) — tentando pelo navegador...';
+        await monitorSearchViaBrowser(days, notice);
+      } else {
+        alert(`Busca concluída: ${r.checked} processo(s) verificado(s), ${r.withNewMovement} com movimentação nova.` + (r.errors.length ? `\n${r.errors.length} com erro.` : ''));
+      }
+    } catch (err) {
+      notice.innerHTML = 'Falha ao buscar pelo servidor — tentando pelo navegador...';
+      await monitorSearchViaBrowser(days, notice);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Buscar Movimentações';
+      loadMonitorPanel();
+    }
+  });
+
+  async function monitorSearchViaBrowser(days, notice) {
+    const status = await api('/integrations/status');
+    if (!status.djen.configured) { alert('OAB não configurada no servidor.'); return; }
+    const monitored = await api('/integrations/djen/monitored');
+    if (!monitored.length) { notice.innerHTML = 'Nenhum processo monitorado.'; return; }
+
+    const fim = new Date();
+    const inicio = new Date(fim.getTime() - days * 24 * 60 * 60 * 1000);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+
+    let checked = 0, withNewMovement = 0, errors = 0;
+    for (let i = 0; i < monitored.length; i++) {
+      const p = monitored[i];
+      notice.innerHTML = `Verificando processo ${i + 1} de ${monitored.length} (${esc(p.number)})...`;
+      try {
+        const params = new URLSearchParams({
+          numeroOab: status.djen.numeroOab, ufOab: status.djen.ufOab,
+          numeroProcesso: p.number.replace(/\D/g, ''),
+          dataDisponibilizacaoInicio: fmt(inicio), dataDisponibilizacaoFim: fmt(fim),
+          itensPorPagina: '50', pagina: '1'
+        });
+        const resp = await fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?${params.toString()}`, { headers: { Accept: 'application/json' } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const items = Array.isArray(data) ? data : (data.items || data.data || []);
+        const r = await api('/integrations/djen/monitor/ingest', { method: 'POST', body: JSON.stringify({ process_id: p.id, items }) });
+        checked++;
+        if (r.status === 'sucesso') withNewMovement++;
+      } catch (err) {
+        errors++;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    notice.innerHTML = `Busca pelo navegador concluída.`;
+    alert(`Busca pelo navegador concluída: ${checked} processo(s) verificado(s), ${withNewMovement} com movimentação nova.` + (errors ? `\n${errors} com erro.` : ''));
+  }
 
   // ---------- DJEN (intimações/publicações) ----------
   function djenSummaryRow(item) {

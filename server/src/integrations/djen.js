@@ -52,7 +52,7 @@ function isSigiloso(item) {
 }
 
 /** Busca comunicacoes (intimacoes/publicacoes) no DJEN para a OAB configurada. */
-async function fetchComunicacoes({ dataInicio, dataFim, pagina = 1, itensPorPagina = MAX_ITENS_POR_PAGINA } = {}) {
+async function fetchComunicacoes({ dataInicio, dataFim, pagina = 1, itensPorPagina = MAX_ITENS_POR_PAGINA, numeroProcesso } = {}) {
   if (!isConfigured()) {
     const err = new Error('Integracao DJEN nao configurada. Defina ADVOGADO_OAB_NUMERO e ADVOGADO_OAB_UF no .env.');
     err.code = 'DJEN_NOT_CONFIGURED';
@@ -67,6 +67,11 @@ async function fetchComunicacoes({ dataInicio, dataFim, pagina = 1, itensPorPagi
   });
   if (dataInicio) params.set('dataDisponibilizacaoInicio', dataInicio);
   if (dataFim) params.set('dataDisponibilizacaoFim', dataFim);
+  // Filtro por numero de processo (20 digitos sem mascara), usado pelo
+  // monitoramento por processo cadastrado. Nao validado ao vivo neste
+  // ambiente (rede bloqueada) - se vier sempre vazio de forma suspeita,
+  // trocar para buscar por OAB e filtrar localmente pelo numero.
+  if (numeroProcesso) params.set('numeroProcesso', onlyDigits(numeroProcesso));
 
   const url = `${BASE_URL}/comunicacao?${params.toString()}`;
   const resp = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -189,4 +194,89 @@ async function syncOfficeNotifications({ days = 7 } = {}) {
   return processItems(items);
 }
 
-module.exports = { fetchComunicacoes, syncOfficeNotifications, processItems, testConnection, isConfigured };
+function dateRangeFor(days) {
+  const fim = new Date();
+  const inicio = new Date(fim.getTime() - days * 24 * 60 * 60 * 1000);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  return { dataInicio: fmt(inicio), dataFim: fmt(fim) };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Grava o resultado (sucesso/erro/sem novidade) da ultima verificacao de um processo monitorado. */
+function finalizeMonitorResult(processId, { status, error, movementDate }) {
+  db.prepare(`
+    UPDATE processes SET last_sync_at = datetime('now'), last_monitor_status = ?, last_monitor_error = ?,
+      last_movement_date = COALESCE(?, last_movement_date)
+    WHERE id = ?
+  `).run(status, error || null, movementDate || null, processId);
+}
+
+/**
+ * Busca movimentacoes de UM processo monitorado (via numeroProcesso) e grava
+ * o resultado. Usado tanto pela busca em lote do servidor quanto para
+ * processar o que o navegador do usuario buscou (ver ingestForProcess).
+ */
+async function searchMonitoredProcess(process, { days = 5 } = {}) {
+  const { dataInicio, dataFim } = dateRangeFor(days);
+  try {
+    const { items } = await fetchComunicacoes({ dataInicio, dataFim, numeroProcesso: process.number });
+    return finishMonitorProcessing(process, items);
+  } catch (err) {
+    finalizeMonitorResult(process.id, { status: 'erro', error: err.message });
+    return { processId: process.id, status: 'erro', error: err.message, created: 0 };
+  }
+}
+
+/** Processa itens ja obtidos (de qualquer origem) para UM processo monitorado e grava o resultado. */
+function finishMonitorProcessing(process, items) {
+  const { created, matched } = processItems(items);
+  const latestDate = items.reduce((max, it) => {
+    const d = it.data_disponibilizacao;
+    return d && (!max || d > max) ? d : max;
+  }, null);
+  finalizeMonitorResult(process.id, {
+    status: created > 0 ? 'sucesso' : 'sem_movimentacao',
+    error: null,
+    movementDate: latestDate
+  });
+  return { processId: process.id, status: created > 0 ? 'sucesso' : 'sem_movimentacao', created, matched };
+}
+
+/** Lista os processos com monitoramento ativo (monitoring_mode='automatico' e numero preenchido). */
+function listMonitoredProcesses() {
+  return db.prepare(`
+    SELECT processes.*, clients.name AS client_name
+    FROM processes JOIN clients ON clients.id = processes.client_id
+    WHERE processes.monitoring_mode = 'automatico' AND processes.number IS NOT NULL AND processes.number != ''
+    ORDER BY processes.number
+  `).all();
+}
+
+/**
+ * Roda a busca em lote (feita pelo PROPRIO SERVIDOR) para todos os processos
+ * monitorados, um de cada vez com um pequeno intervalo entre chamadas (para
+ * nao sofrer bloqueio por excesso de requisicoes). Um erro num processo nao
+ * interrompe os demais.
+ */
+async function batchSearchMonitored({ days = 5 } = {}) {
+  const processes = listMonitoredProcesses();
+  const results = [];
+  for (const process of processes) {
+    results.push(await searchMonitoredProcess(process, { days }));
+    await sleep(500);
+  }
+  return {
+    checked: results.length,
+    withNewMovement: results.filter((r) => r.status === 'sucesso').length,
+    errors: results.filter((r) => r.status === 'erro'),
+    results
+  };
+}
+
+module.exports = {
+  fetchComunicacoes, syncOfficeNotifications, processItems, testConnection, isConfigured,
+  listMonitoredProcesses, searchMonitoredProcess, finishMonitorProcessing, batchSearchMonitored, dateRangeFor
+};

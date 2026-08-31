@@ -89,6 +89,45 @@ router.delete('/djen/communications/:id', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
+// ---- Processos monitorados (movimentacao por processo especifico) ----
+
+router.get('/djen/monitored', requireAuth, (req, res) => {
+  res.json(djen.listMonitoredProcesses());
+});
+
+// Busca em lote pelo SERVIDOR - itera os processos monitorados chamando o
+// DJEN por numero de processo. Pode falhar por completo se o servidor nao
+// alcancar a API (ver /djen/test) - nesse caso use a rota /djen/monitor/ingest
+// (fallback pelo navegador) processo a processo.
+router.post('/djen/monitor/search', requireAuth, async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 5;
+    const result = await djen.batchSearchMonitored({ days });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Recebe os itens que o NAVEGADOR buscou (fetch client-side) para UM
+// processo monitorado especifico, e grava o resultado da mesma forma que a
+// busca pelo servidor faria - usado como fallback quando o servidor nao
+// alcanca a API do DJEN.
+router.post('/djen/monitor/ingest', requireAuth, (req, res) => {
+  const { process_id, items } = req.body || {};
+  if (!process_id || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'Envie { process_id, items: [...] }.' });
+  }
+  const process = db.prepare('SELECT * FROM processes WHERE id = ?').get(process_id);
+  if (!process) return res.status(404).json({ error: 'Processo não encontrado.' });
+  try {
+    const result = djen.finishMonitorProcessing(process, items);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ---- Google Agenda ----
 
 // Gera a URL de consentimento do Google. O "state" carrega um token de curta

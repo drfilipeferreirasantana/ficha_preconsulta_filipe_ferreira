@@ -28,7 +28,10 @@ ensureColumns('processes', {
   case_value: 'REAL',
   fee_type: 'TEXT',
   fee_percentage: 'REAL',
-  down_payment: 'REAL'
+  down_payment: 'REAL',
+  last_monitor_status: 'TEXT', // sucesso | sem_movimentacao | erro
+  last_monitor_error: 'TEXT',
+  last_movement_date: 'TEXT'
 });
 ensureColumns('djen_communications', {
   org_name: 'TEXT',

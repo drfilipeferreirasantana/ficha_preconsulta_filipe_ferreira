@@ -173,6 +173,28 @@
       <div class="panel" id="notifications-list"></div>
 
       <div class="page-head" style="margin-top:2rem">
+        <h2 style="font-size:20px">Processos Monitorados</h2>
+        <div class="actions">
+          <select id="monitor-period" style="width:auto;padding:10px 12px;border:1px solid var(--border);border-radius:2px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:12.5px">
+            <option value="1">1 dia</option>
+            <option value="5" selected>5 dias</option>
+            <option value="15">15 dias</option>
+          </select>
+          <button class="btn btn-gold" id="btn-monitor-search">Buscar Movimentações</button>
+        </div>
+      </div>
+      <div class="notice" id="monitor-status-notice"></div>
+      <div class="panel">
+        <h3>Ativar monitoramento</h3>
+        <p class="muted" style="margin-bottom:1rem">Marque quais processos cadastrados devem ser monitorados. Só é possível ativar processos com número CNJ preenchido.</p>
+        <div id="monitor-toggle-list"></div>
+      </div>
+      <div class="panel">
+        <h3>Processos monitorados agora</h3>
+        <div id="monitor-list"></div>
+      </div>
+
+      <div class="page-head" style="margin-top:2rem">
         <h2 style="font-size:20px">Intimações do DJEN</h2>
         <div class="actions">
           <select id="djen-period" style="width:auto;padding:10px 12px;border:1px solid var(--border);border-radius:2px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:12.5px">

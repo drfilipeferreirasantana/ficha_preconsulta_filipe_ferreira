@@ -172,6 +172,9 @@ router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM processes WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Processo nao encontrado.' });
   const b = { ...existing, ...req.body, updated_at: new Date().toISOString() };
+  if (b.monitoring_mode === 'automatico' && !b.number) {
+    return res.status(400).json({ error: 'Não é possível monitorar um processo sem número CNJ cadastrado.' });
+  }
   db.prepare(`
     UPDATE processes SET number=@number, court=@court, court_system=@court_system, subject=@subject,
       phase=@phase, status=@status, responsible=@responsible, next_deadline=@next_deadline,
