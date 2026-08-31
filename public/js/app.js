@@ -827,6 +827,7 @@
         <div style="margin-top:6px;display:flex;gap:14px">
           ${!item.is_read ? `<span class="link-btn" data-mark-djen-read="${item.id}">marcar como lida</span>` : ''}
           ${item.link ? `<a class="link-btn" target="_blank" href="${esc(item.link)}">ver íntegra</a>` : ''}
+          <span class="link-btn" data-del-djen="${item.id}" style="color:var(--danger)">excluir</span>
         </div>
       </div>`;
   }
@@ -850,6 +851,12 @@
       await api('/integrations/djen/communications/' + el.dataset.markDjenRead + '/read', { method: 'POST' });
       loadDjenPanel();
     }));
+    document.querySelectorAll('[data-del-djen]').forEach((el) => el.addEventListener('click', async () => {
+      if (confirm('Excluir esta intimação da lista? Ela pode voltar a aparecer numa próxima busca se ainda estiver dentro do período consultado.')) {
+        await api('/integrations/djen/communications/' + el.dataset.delDjen, { method: 'DELETE' });
+        loadDjenPanel();
+      }
+    }));
   }
 
   document.getElementById('djen-show-read').addEventListener('change', loadDjenPanel);
@@ -870,9 +877,10 @@
 
   document.getElementById('btn-djen-sync-server').addEventListener('click', async (e) => {
     const btn = e.target;
+    const days = document.getElementById('djen-period').value;
     btn.disabled = true; btn.textContent = 'Buscando...';
     try {
-      const r = await api('/integrations/djen/sync', { method: 'POST' });
+      const r = await api(`/integrations/djen/sync?days=${days}`, { method: 'POST' });
       alert(`Sincronização concluída: ${r.fetched} comunicações encontradas, ${r.created} novas, ${r.matched} vinculadas a processos cadastrados.`);
       loadDjenPanel();
     } catch (err) {
@@ -888,9 +896,14 @@
     try {
       const status = await api('/integrations/status');
       if (!status.djen.configured) throw new Error('OAB não configurada no servidor.');
+      const days = Number(document.getElementById('djen-period').value);
+      const fim = new Date();
+      const inicio = new Date(fim.getTime() - days * 24 * 60 * 60 * 1000);
+      const fmt = (d) => d.toISOString().slice(0, 10);
       const params = new URLSearchParams({
         numeroOab: status.djen.numeroOab, ufOab: status.djen.ufOab,
-        itensPorPagina: '50', pagina: '1'
+        itensPorPagina: '50', pagina: '1',
+        dataDisponibilizacaoInicio: fmt(inicio), dataDisponibilizacaoFim: fmt(fim)
       });
       const resp = await fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?${params.toString()}`, {
         headers: { Accept: 'application/json' }

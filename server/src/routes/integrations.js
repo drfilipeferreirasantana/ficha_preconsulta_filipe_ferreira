@@ -84,6 +84,11 @@ router.post('/djen/communications/read-all', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
+router.delete('/djen/communications/:id', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM djen_communications WHERE id = ?').run(req.params.id);
+  res.status(204).end();
+});
+
 // ---- Google Agenda ----
 
 // Gera a URL de consentimento do Google. O "state" carrega um token de curta
