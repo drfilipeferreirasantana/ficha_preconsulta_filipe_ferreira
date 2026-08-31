@@ -171,6 +171,22 @@
         <div class="actions"><button class="btn btn-outline" id="btn-read-all">Marcar todas como lidas</button></div>
       </div>
       <div class="panel" id="notifications-list"></div>
+
+      <div class="page-head" style="margin-top:2rem">
+        <h2 style="font-size:20px">Intimações do DJEN</h2>
+        <div class="actions">
+          <button class="btn btn-outline" id="btn-djen-test">Testar conexão do servidor</button>
+          <button class="btn btn-outline" id="btn-djen-sync-server">Buscar pelo servidor</button>
+          <button class="btn btn-gold" id="btn-djen-sync-browser">Buscar agora (pelo navegador)</button>
+        </div>
+      </div>
+      <div class="notice" id="djen-notice"></div>
+      <div class="panel">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:1rem;cursor:pointer">
+          <input type="checkbox" id="djen-show-read" style="width:15px;height:15px"> Mostrar também as já lidas
+        </label>
+        <div id="djen-list"></div>
+      </div>
     </div>
 
     <!-- BACKUP -->

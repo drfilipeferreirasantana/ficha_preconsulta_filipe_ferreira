@@ -118,14 +118,19 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- comunicaapi.pje.jus.br) - API publica do CNJ, ver server/src/integrations/djen.js
 CREATE TABLE IF NOT EXISTS djen_communications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  external_id TEXT UNIQUE,         -- hash/id retornado pela API, usado para evitar duplicidade
+  external_id TEXT UNIQUE,         -- "id" retornado pela API do DJEN, usado para evitar duplicidade
   process_id INTEGER REFERENCES processes(id) ON DELETE SET NULL,
-  process_number TEXT,             -- numero do processo informado pelo DJEN
-  court TEXT,
-  communication_type TEXT,
-  content TEXT,
+  process_number TEXT,             -- numero do processo com mascara (numeroprocessocommascara)
+  court TEXT,                      -- siglaTribunal
+  communication_type TEXT,         -- tipoComunicacao
+  org_name TEXT,                   -- nomeOrgao
+  class_name TEXT,                 -- nomeClasse
+  content TEXT,                    -- texto (HTML removido)
+  link TEXT,                       -- link para o documento oficial (pode ser nulo em sigilo)
+  sigiloso INTEGER NOT NULL DEFAULT 0, -- 1 se algum destinatario aparece em segredo de justica
   disponibilizacao_date TEXT,
   matched INTEGER NOT NULL DEFAULT 0, -- 1 se foi vinculado a um processo cadastrado
+  is_read INTEGER NOT NULL DEFAULT 0,
   raw_json TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

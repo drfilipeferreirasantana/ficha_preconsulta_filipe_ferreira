@@ -30,6 +30,13 @@ ensureColumns('processes', {
   fee_percentage: 'REAL',
   down_payment: 'REAL'
 });
+ensureColumns('djen_communications', {
+  org_name: 'TEXT',
+  class_name: 'TEXT',
+  link: 'TEXT',
+  sigiloso: 'INTEGER NOT NULL DEFAULT 0',
+  is_read: 'INTEGER NOT NULL DEFAULT 0'
+});
 ensureColumns('tasks', {
   is_hearing: 'INTEGER NOT NULL DEFAULT 0',
   event_start: 'TEXT',

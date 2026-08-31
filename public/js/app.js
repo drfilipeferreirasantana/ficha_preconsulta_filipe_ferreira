@@ -782,13 +782,8 @@
     badgeEl.style.display = unread ? 'inline-block' : 'none';
     badgeEl.textContent = unread;
 
-    const status = await api('/integrations/status').catch(() => null);
-    const syncBtnHtml = status && status.djen.configured
-      ? '<button class="btn btn-outline" id="btn-sync-djen" style="margin-bottom:1rem">Buscar novas intimações agora (DJEN)</button>'
-      : '<div class="notice">Integração automática com o DJEN não configurada neste servidor (variáveis ADVOGADO_OAB_NUMERO / ADVOGADO_OAB_UF). Notificações abaixo são geradas pelo próprio sistema (ex: novos leads).</div>';
-
     const listHtml = list.length ? list.map((n) => `
-      <div style="padding:12px 0;border-bottom:1px solid #f0eee8;${n.is_read ? 'opacity:.6' : ''}">
+      <div style="padding:12px 0;border-bottom:1px solid var(--border);${n.is_read ? 'opacity:.6' : ''}">
         <div style="display:flex;justify-content:space-between;gap:1rem">
           <strong style="font-size:13px">${esc(n.title)}</strong>
           <span class="muted" style="white-space:nowrap;font-size:11px">${dateBR(n.created_at)}</span>
@@ -801,32 +796,116 @@
         </div>
       </div>`).join('') : '<p class="muted">Nenhuma notificação até o momento.</p>';
 
-    document.getElementById('notifications-list').innerHTML = syncBtnHtml + listHtml;
-
-    const syncBtn = document.getElementById('btn-sync-djen');
-    if (syncBtn) syncBtn.addEventListener('click', async () => {
-      syncBtn.disabled = true;
-      syncBtn.textContent = 'Buscando...';
-      try {
-        const r = await api('/integrations/djen/sync', { method: 'POST' });
-        alert(`Sincronização concluída: ${r.fetched} comunicações encontradas, ${r.created} novas, ${r.matched} vinculadas a processos cadastrados.`);
-        loadNotifications();
-      } catch (err) {
-        alert('Erro ao sincronizar: ' + err.message);
-      } finally {
-        syncBtn.disabled = false;
-      }
-    });
+    document.getElementById('notifications-list').innerHTML = listHtml;
 
     document.querySelectorAll('[data-mark-read]').forEach((el) => el.addEventListener('click', async () => {
       await api('/notifications/' + el.dataset.markRead + '/read', { method: 'POST' });
       loadNotifications();
     }));
+
+    await loadDjenPanel();
   }
 
   document.getElementById('btn-read-all').addEventListener('click', async () => {
     await api('/notifications/read-all', { method: 'POST' });
     loadNotifications();
+  });
+
+  // ---------- DJEN (intimações/publicações) ----------
+  function djenSummaryRow(item) {
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border);${item.is_read ? 'opacity:.55' : ''}">
+        <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+          <strong style="font-size:13px">${esc(item.court || '—')} · ${esc(item.communication_type || 'Comunicação')}${item.sigiloso ? ' 🔒' : ''}</strong>
+          <span class="muted" style="white-space:nowrap;font-size:11px">${dateBR(item.disponibilizacao_date)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--slate-light);margin-top:4px">
+          ${item.process_number ? `Processo ${esc(item.process_number)}` : 'Processo não identificado'}${item.class_name ? ' · ' + esc(item.class_name) : ''}${item.org_name ? ' · ' + esc(item.org_name) : ''}
+        </div>
+        ${item.client_name ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Cliente vinculado: ${esc(item.client_name)}</div>` : ''}
+        ${item.content ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(item.content.slice(0, 250))}${item.content.length > 250 ? '…' : ''}</div>` : ''}
+        <div style="margin-top:6px;display:flex;gap:14px">
+          ${!item.is_read ? `<span class="link-btn" data-mark-djen-read="${item.id}">marcar como lida</span>` : ''}
+          ${item.link ? `<a class="link-btn" target="_blank" href="${esc(item.link)}">ver íntegra</a>` : ''}
+        </div>
+      </div>`;
+  }
+
+  async function loadDjenPanel() {
+    const status = await api('/integrations/status').catch(() => null);
+    const noticeEl = document.getElementById('djen-notice');
+    if (status && status.djen.configured) {
+      noticeEl.innerHTML = `Configurado para OAB ${esc(status.djen.numeroOab)}/${esc(status.djen.ufOab)}. Se "Buscar pelo servidor" falhar (a API do DJEN pode bloquear IPs fora do Brasil, dependendo de onde o servidor está hospedado), use "Buscar agora (pelo navegador)" — funciona sempre, mas só busca enquanto esta aba estiver aberta.`;
+    } else {
+      noticeEl.innerHTML = `Não configurado neste servidor (faltam ADVOGADO_OAB_NUMERO / ADVOGADO_OAB_UF).`;
+    }
+
+    const showRead = document.getElementById('djen-show-read').checked;
+    const items = await api('/integrations/djen/communications' + (showRead ? '' : '?unread=1')).catch(() => []);
+    document.getElementById('djen-list').innerHTML = items.length
+      ? items.map(djenSummaryRow).join('')
+      : '<p class="muted">Nenhuma intimação para exibir.</p>';
+
+    document.querySelectorAll('[data-mark-djen-read]').forEach((el) => el.addEventListener('click', async () => {
+      await api('/integrations/djen/communications/' + el.dataset.markDjenRead + '/read', { method: 'POST' });
+      loadDjenPanel();
+    }));
+  }
+
+  document.getElementById('djen-show-read').addEventListener('change', loadDjenPanel);
+
+  document.getElementById('btn-djen-test').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = 'Testando...';
+    try {
+      const r = await api('/integrations/djen/test');
+      if (r.ok) alert('Conexão OK — o servidor conseguiu acessar a API do DJEN (status ' + r.status + ').');
+      else alert('Falha: ' + (r.error || `HTTP ${r.status}` || r.reason) + '\n\nUse "Buscar agora (pelo navegador)" como alternativa.');
+    } catch (err) {
+      alert('Erro ao testar: ' + err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Testar conexão do servidor';
+    }
+  });
+
+  document.getElementById('btn-djen-sync-server').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    try {
+      const r = await api('/integrations/djen/sync', { method: 'POST' });
+      alert(`Sincronização concluída: ${r.fetched} comunicações encontradas, ${r.created} novas, ${r.matched} vinculadas a processos cadastrados.`);
+      loadDjenPanel();
+    } catch (err) {
+      alert('Falha ao buscar pelo servidor: ' + err.message + '\n\nTente "Buscar agora (pelo navegador)".');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Buscar pelo servidor';
+    }
+  });
+
+  document.getElementById('btn-djen-sync-browser').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    try {
+      const status = await api('/integrations/status');
+      if (!status.djen.configured) throw new Error('OAB não configurada no servidor.');
+      const params = new URLSearchParams({
+        numeroOab: status.djen.numeroOab, ufOab: status.djen.ufOab,
+        itensPorPagina: '50', pagina: '1'
+      });
+      const resp = await fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?${params.toString()}`, {
+        headers: { Accept: 'application/json' }
+      });
+      if (!resp.ok) throw new Error(`A API do DJEN respondeu HTTP ${resp.status} direto do seu navegador.`);
+      const data = await resp.json();
+      const items = Array.isArray(data) ? data : (data.items || data.data || []);
+      const r = await api('/integrations/djen/ingest', { method: 'POST', body: JSON.stringify({ items }) });
+      alert(`Busca pelo navegador concluída: ${r.fetched} comunicações encontradas, ${r.created} novas, ${r.matched} vinculadas a processos cadastrados.`);
+      loadDjenPanel();
+    } catch (err) {
+      alert('Falha ao buscar pelo navegador: ' + err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Buscar agora (pelo navegador)';
+    }
   });
 
   // ---------- BACKUP ----------
