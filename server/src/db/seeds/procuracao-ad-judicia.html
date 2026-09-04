@@ -1,0 +1,44 @@
+<style>
+  .doc-title{text-align:center;font-size:19px;letter-spacing:.25em;color:#39414a;font-weight:600;margin:0 0 2.5rem}
+  .doc-p{font-size:14px;line-height:1.95;color:#222;text-align:justify;margin:0 0 1.6rem;font-family:Georgia,serif}
+  .doc-p strong{color:#39414a}
+  .fillable{background:#fff6d8;border-bottom:1px dashed #b8930f;padding:0 2px;cursor:text}
+  .fillable:focus{outline:2px solid #39414a;background:#fffdf5}
+  .doc-meta{font-size:14px;color:#222;margin:2.5rem 0 3.5rem;font-family:Georgia,serif}
+  .doc-sign{text-align:center;margin:0 0 1rem}
+  .doc-sign .line{width:300px;border-top:1px solid #333;margin:0 auto 8px}
+  .doc-sign p{font-size:13px;margin:2px 0;color:#333;font-family:Georgia,serif}
+  .doc-hint{font-size:11px;color:#916b00;background:#fff6d8;border:1px dashed #b8930f;padding:.6rem .9rem;margin:0 0 2rem;border-radius:4px}
+  .doc-footer{margin:3rem -3rem -3rem}
+  .doc-footer img{width:100%;display:block}
+  @media print{.doc-hint{display:none}.fillable{background:none;border-bottom:none}}
+</style>
+
+<p class="doc-hint">Antes de imprimir/salvar como PDF: clique nos campos destacados em amarelo e edite os dados necessários (qualificação completa do(a) outorgante, data e nome na assinatura).</p>
+
+<h1 class="doc-title">PROCURAÇÃO</h1>
+
+<p class="doc-p">
+  <strong>OUTORGANTE:</strong>
+  <span class="fillable" contenteditable="true">{{cliente_nome}}, (nacionalidade), (estado civil), (profissão), portador(a) da cédula de identidade RG nº (número do RG), inscrito(a) no CPF/MF sob o nº {{cliente_documento}}, residente e domiciliado(a) em {{cliente_endereco}}</span>.
+</p>
+
+<p class="doc-p">
+  <strong>OUTORGADO:</strong> FILIPE FERREIRA SANTANA, brasileiro, casado, advogado, inscrito na Ordem dos Advogados do Brasil, Seção do Espírito Santo, sob o nº OAB/ES 37.159, com escritório profissional situado na Rua Alameda do Aviso, nº 15, Quadra B15, Bairro Aviso, Linhares/ES, CEP 29.901-139, e-mail dr.filipeferreirasantana@gmail.com, telefone (27) 99518-7279, onde recebe intimações e notificações.
+</p>
+
+<p class="doc-p">
+  <strong>PODERES:</strong> O(a) outorgante nomeia e constitui como seu(sua) procurador(a) o outorgado acima qualificado, conferindo-lhe poderes amplos e gerais para o foro em geral, com a cláusula ad judicia et extra, para representá-lo(a) em juízo ou fora dele, perante qualquer instância, grau de jurisdição ou tribunal, podendo praticar todos os atos necessários à defesa de seus interesses, inclusive propor ações, apresentar defesas, interpor recursos, transigir, firmar compromissos ou acordos, desistir, receber e dar quitação, bem como substabelecer o presente mandato, com ou sem reserva de poderes.
+</p>
+
+<p class="doc-meta">
+  <span class="fillable" contenteditable="true">Linhares/ES, {{data_hoje}}</span>.
+</p>
+
+<div class="doc-sign">
+  <div class="line"></div>
+  <p><span class="fillable" contenteditable="true">{{cliente_nome}}</span></p>
+  <p>OUTORGANTE</p>
+</div>
+
+<div class="doc-footer"><img src="/assets/rodape-contato.png" alt=""></div>

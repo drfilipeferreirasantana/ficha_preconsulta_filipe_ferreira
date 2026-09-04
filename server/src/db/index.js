@@ -69,4 +69,16 @@ if (userCount === 0) {
   console.log(`[setup] Usuario admin criado: ${email} (troque a senha padrao assim que possivel)`);
 }
 
+// Modelo de documento padrao (Procuracao Ad Judicia) - inserido uma unica vez,
+// caso ainda nao exista um modelo com o mesmo titulo (permite o usuario editar
+// ou apagar pela tela "Modelos" sem que ele volte a ser recriado).
+const procuracaoTitle = 'Procuração Ad Judicia et Extra';
+const hasProcuracao = db.prepare('SELECT 1 FROM document_templates WHERE title = ?').get(procuracaoTitle);
+if (!hasProcuracao) {
+  const bodyHtml = fs.readFileSync(path.join(__dirname, 'seeds', 'procuracao-ad-judicia.html'), 'utf8');
+  db.prepare('INSERT INTO document_templates (title, category, body_html) VALUES (?, ?, ?)')
+    .run(procuracaoTitle, 'Procuração', bodyHtml);
+  console.log('[setup] Modelo de documento "Procuração Ad Judicia et Extra" criado.');
+}
+
 module.exports = db;
