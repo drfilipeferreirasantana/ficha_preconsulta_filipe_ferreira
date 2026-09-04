@@ -50,4 +50,15 @@ router.get('/users', requireAuth, (req, res) => {
   res.json(users);
 });
 
+router.delete('/users/:id', requireAuth, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Apenas administradores podem remover usuarios.' });
+  }
+  if (Number(req.params.id) === req.user.id) {
+    return res.status(400).json({ error: 'Você não pode remover seu próprio usuário.' });
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.status(204).end();
+});
+
 module.exports = router;

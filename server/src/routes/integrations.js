@@ -5,6 +5,8 @@ const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const djen = require('../integrations/djen');
 const pje = require('../integrations/pje');
 const googleCalendar = require('../integrations/googleCalendar');
+const email = require('../utils/email');
+const asaas = require('../integrations/asaas');
 
 const router = express.Router();
 
@@ -16,7 +18,9 @@ router.get('/status', requireAuth, (req, res) => {
       ufOab: process.env.ADVOGADO_OAB_UF || null
     },
     pje_mni: { configured: pje.configured },
-    google_calendar: { configured: googleCalendar.isConfigured(), connected: googleCalendar.isConnected() }
+    google_calendar: { configured: googleCalendar.isConfigured(), connected: googleCalendar.isConnected() },
+    email: { configured: email.isConfigured() },
+    asaas: { configured: asaas.isConfigured() }
   });
 });
 

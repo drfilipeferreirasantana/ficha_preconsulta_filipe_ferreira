@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, requireAuthFlexible } = require('../middleware/auth');
 const { renderReceiptHtml } = require('../utils/receipt');
 const whatsapp = require('../utils/whatsapp');
+const asaas = require('../integrations/asaas');
 
 const router = express.Router();
 
@@ -22,7 +23,8 @@ router.get('/summary', requireAuth, (req, res) => {
   const overdue = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente' AND due_date < date('now')`).get().total;
   const payable = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='pagar' AND status='pendente'`).get().total;
   const receivedThisMonth = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pago' AND strftime('%Y-%m', paid_date) = strftime('%Y-%m','now')`).get().total;
-  res.json({ receivable, overdue, payable, receivedThisMonth });
+  const receivedLastMonth = db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pago' AND strftime('%Y-%m', paid_date) = strftime('%Y-%m', date('now','start of month','-1 day'))`).get().total;
+  res.json({ receivable, overdue, payable, receivedThisMonth, receivedLastMonth });
 });
 
 router.post('/', requireAuth, (req, res) => {
@@ -106,6 +108,24 @@ router.get('/:id/receipt-whatsapp-link', requireAuth, (req, res) => {
     clientName: entry.client_name, amount: entry.amount
   }));
   res.json({ whatsapp_link: link });
+});
+
+// Gera um boleto real via Asaas para um lancamento "a receber". Exige
+// ASAAS_API_KEY configurada no servidor (ver integrations/asaas.js) e que o
+// lancamento tenha um cliente vinculado.
+router.post('/:id/boleto', requireAuth, async (req, res) => {
+  const entry = db.prepare('SELECT * FROM finance_entries WHERE id = ?').get(req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Lançamento não encontrado.' });
+  if (entry.type !== 'receber') return res.status(400).json({ error: 'Boleto só pode ser gerado para lançamentos "a receber".' });
+  const client = entry.client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(entry.client_id) : null;
+  if (!client) return res.status(400).json({ error: 'Este lançamento não tem cliente vinculado.' });
+  try {
+    const result = await asaas.createBoleto(entry, client);
+    res.json(result);
+  } catch (err) {
+    const status = err.code === 'ASAAS_NOT_CONFIGURED' ? 400 : 502;
+    res.status(status).json({ error: err.message });
+  }
 });
 
 module.exports = router;

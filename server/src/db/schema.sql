@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS clients (
   conflict_level INTEGER,
   notes TEXT,                -- descricao do caso / observacoes
   raw_intake_json TEXT,      -- payload completo da ficha de pre-consulta, se houver
+  asaas_customer_id TEXT,    -- id do cliente no gateway de pagamento (Asaas), se ja criado
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS processes (
   subject TEXT,                -- assunto/classe
   phase TEXT,                  -- fase atual (conhecimento, execucao, recursal...)
   status TEXT NOT NULL DEFAULT 'ativo', -- ativo | suspenso | arquivado | encerrado
-  responsible TEXT,            -- advogado responsavel
+  responsible TEXT,            -- advogado responsavel (nome, para exibicao)
+  responsible_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- vinculo com usuario do sistema, se houver
   next_deadline TEXT,          -- proximo prazo (data ISO)
   next_deadline_desc TEXT,
   monitoring_mode TEXT NOT NULL DEFAULT 'manual', -- manual | automatico
@@ -73,6 +75,19 @@ CREATE TABLE IF NOT EXISTS finance_entries (
   status TEXT NOT NULL DEFAULT 'pendente', -- pendente | pago | atrasado | cancelado
   installment_no INTEGER,
   installment_total INTEGER,
+  asaas_charge_id TEXT,       -- id da cobranca no Asaas, se um boleto foi gerado
+  boleto_url TEXT,            -- link para visualizar/baixar o boleto gerado
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Modelos de documentos (peticoes, contratos, procuracoes) reaproveitaveis.
+-- body_html aceita placeholders tipo {{cliente_nome}} substituidos na geracao.
+CREATE TABLE IF NOT EXISTS document_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  category TEXT,             -- ex: peticao, contrato, procuracao
+  body_html TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

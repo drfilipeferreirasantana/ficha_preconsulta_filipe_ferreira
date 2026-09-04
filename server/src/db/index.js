@@ -31,7 +31,15 @@ ensureColumns('processes', {
   down_payment: 'REAL',
   last_monitor_status: 'TEXT', // sucesso | sem_movimentacao | erro
   last_monitor_error: 'TEXT',
-  last_movement_date: 'TEXT'
+  last_movement_date: 'TEXT',
+  responsible_user_id: 'INTEGER REFERENCES users(id) ON DELETE SET NULL'
+});
+ensureColumns('clients', {
+  asaas_customer_id: 'TEXT'
+});
+ensureColumns('finance_entries', {
+  asaas_charge_id: 'TEXT',
+  boleto_url: 'TEXT'
 });
 ensureColumns('djen_communications', {
   org_name: 'TEXT',

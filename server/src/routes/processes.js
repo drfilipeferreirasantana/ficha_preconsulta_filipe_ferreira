@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const pje = require('../integrations/pje');
 const whatsapp = require('../utils/whatsapp');
+const email = require('../utils/email');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -10,8 +11,9 @@ router.use(requireAuth);
 router.get('/', (req, res) => {
   const { status, client_id, upcoming, q } = req.query;
   let sql = `
-    SELECT processes.*, clients.name AS client_name
+    SELECT processes.*, clients.name AS client_name, users.name AS responsible_user_name
     FROM processes JOIN clients ON clients.id = processes.client_id
+    LEFT JOIN users ON users.id = processes.responsible_user_id
     WHERE 1=1`;
   const params = [];
   if (status) { sql += ' AND processes.status = ?'; params.push(status); }
@@ -74,8 +76,8 @@ router.post('/', (req, res) => {
     }
 
     const processInfo = db.prepare(`
-      INSERT INTO processes (client_id, number, court, court_system, subject, phase, status, responsible, next_deadline, next_deadline_desc, monitoring_mode, case_value, fee_type, fee_percentage, down_payment)
-      VALUES (@client_id, @number, @court, @court_system, @subject, @phase, @status, @responsible, @next_deadline, @next_deadline_desc, @monitoring_mode, @case_value, @fee_type, @fee_percentage, @down_payment)
+      INSERT INTO processes (client_id, number, court, court_system, subject, phase, status, responsible, responsible_user_id, next_deadline, next_deadline_desc, monitoring_mode, case_value, fee_type, fee_percentage, down_payment)
+      VALUES (@client_id, @number, @court, @court_system, @subject, @phase, @status, @responsible, @responsible_user_id, @next_deadline, @next_deadline_desc, @monitoring_mode, @case_value, @fee_type, @fee_percentage, @down_payment)
     `).run({
       client_id: clientId,
       number: b.number || null,
@@ -85,6 +87,7 @@ router.post('/', (req, res) => {
       phase: b.phase || null,
       status: b.status || 'ativo',
       responsible: b.responsible || null,
+      responsible_user_id: b.responsible_user_id || null,
       next_deadline: b.next_deadline || null,
       next_deadline_desc: b.next_deadline_desc || null,
       monitoring_mode: b.monitoring_mode || 'manual',
@@ -156,6 +159,16 @@ router.post('/', (req, res) => {
 
   const receiptEntry = result.financeInserted.find((f) => f.kind === 'entrada');
 
+  if (client.email) {
+    email.sendEmail({
+      to: client.email,
+      subject: `Processo cadastrado - ${process.number || 'Filipe Ferreira Advogados'}`,
+      html: email.processRegisteredEmail({
+        clientName: client.name, processNumber: process.number, court: process.court, caseValue: process.case_value
+      })
+    });
+  }
+
   res.status(201).json({
     client,
     process,
@@ -177,7 +190,7 @@ router.put('/:id', (req, res) => {
   }
   db.prepare(`
     UPDATE processes SET number=@number, court=@court, court_system=@court_system, subject=@subject,
-      phase=@phase, status=@status, responsible=@responsible, next_deadline=@next_deadline,
+      phase=@phase, status=@status, responsible=@responsible, responsible_user_id=@responsible_user_id, next_deadline=@next_deadline,
       next_deadline_desc=@next_deadline_desc, monitoring_mode=@monitoring_mode,
       case_value=@case_value, fee_type=@fee_type, fee_percentage=@fee_percentage, down_payment=@down_payment,
       updated_at=@updated_at
@@ -200,9 +213,17 @@ router.post('/:id/updates', (req, res) => {
   `).run(req.params.id, description, date || null, source || 'manual');
 
   const process = db.prepare(`
-    SELECT processes.*, clients.name AS client_name, clients.phone AS client_phone
+    SELECT processes.*, clients.name AS client_name, clients.phone AS client_phone, clients.email AS client_email
     FROM processes JOIN clients ON clients.id = processes.client_id WHERE processes.id = ?
   `).get(req.params.id);
+
+  if (process && process.client_email) {
+    email.sendEmail({
+      to: process.client_email,
+      subject: `Nova movimentação - processo ${process.number || ''}`,
+      html: email.processUpdateEmail({ clientName: process.client_name, processNumber: process.number, description })
+    });
+  }
 
   res.status(201).json({
     update: db.prepare('SELECT * FROM process_updates WHERE id = ?').get(info.lastInsertRowid),

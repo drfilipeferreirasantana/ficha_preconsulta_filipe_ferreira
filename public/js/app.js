@@ -75,6 +75,7 @@
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').classList.add('active');
     document.getElementById('who-am-i').textContent = `${ME.name} · ${ME.role}`;
+    if (ME.role === 'admin') document.getElementById('nav-team').style.display = 'flex';
     loadPage('dashboard');
   }
 
@@ -113,7 +114,9 @@
       finance: loadFinance,
       tasks: loadTasks,
       notifications: loadNotifications,
-      backup: loadBackup
+      backup: loadBackup,
+      templates: loadTemplates,
+      team: loadTeam
     };
     loaders[page] && loaders[page]();
   }
@@ -135,10 +138,12 @@
 
   // ---------- DASHBOARD ----------
   async function loadDashboard() {
-    const [clients, processesUpcoming, financeSummary] = await Promise.all([
+    const [clients, processesUpcoming, financeSummary, tasks, processes] = await Promise.all([
       api('/clients'),
       api('/processes?upcoming=7'),
-      api('/finance/summary')
+      api('/finance/summary'),
+      api('/tasks'),
+      api('/processes')
     ]);
     const ativos = clients.filter((c) => c.status === 'ativo').length;
     const leads = clients.filter((c) => c.status === 'lead').length;
@@ -148,7 +153,7 @@
       <div class="kpi"><div class="lbl">Leads em aberto</div><div class="val">${leads}</div></div>
       <div class="kpi danger"><div class="lbl">A receber (pendente)</div><div class="val">${money(financeSummary.receivable)}</div></div>
       <div class="kpi danger"><div class="lbl">Em atraso</div><div class="val">${money(financeSummary.overdue)}</div></div>
-      <div class="kpi success"><div class="lbl">Recebido no mês</div><div class="val">${money(financeSummary.receivedThisMonth)}</div></div>
+      <div class="kpi success"><div class="lbl">Recebido no mês</div><div class="val">${money(financeSummary.receivedThisMonth)}${financeSummary.receivedLastMonth ? ` <span class="muted" style="font-size:11px">(${financeSummary.receivedThisMonth >= financeSummary.receivedLastMonth ? '▲' : '▼'} vs ${money(financeSummary.receivedLastMonth)} mês passado)</span>` : ''}</div></div>
     `;
 
     const tbody = document.querySelector('#tbl-deadlines tbody');
@@ -159,6 +164,39 @@
         <td>${dateBR(p.next_deadline)}</td>
         <td>${esc(p.next_deadline_desc || '—')}</td>
       </tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nenhum prazo nos próximos 7 dias.</td></tr>';
+
+    // ---- Painel de produtividade ----
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const pendentes = tasks.filter((t) => t.status === 'pendente').length;
+    const emAndamento = tasks.filter((t) => t.status === 'em_andamento').length;
+    const concluidas = tasks.filter((t) => t.status === 'concluida').length;
+    const atrasadas = tasks.filter((t) => t.due_date && t.due_date.slice(0, 10) < todayStr && t.status !== 'concluida').length;
+    document.getElementById('productivity-kpi-grid').innerHTML = `
+      <div class="kpi"><div class="lbl">Tarefas pendentes</div><div class="val">${pendentes}</div></div>
+      <div class="kpi"><div class="lbl">Em andamento</div><div class="val">${emAndamento}</div></div>
+      <div class="kpi success"><div class="lbl">Concluídas</div><div class="val">${concluidas}</div></div>
+      <div class="kpi danger"><div class="lbl">Atrasadas</div><div class="val">${atrasadas}</div></div>
+    `;
+
+    const byUser = {};
+    tasks.forEach((t) => {
+      const key = t.assigned_name || 'Sem responsável definido';
+      if (!byUser[key]) byUser[key] = { pendente: 0, em_andamento: 0, concluida: 0, atrasada: 0 };
+      byUser[key][t.status] = (byUser[key][t.status] || 0) + 1;
+      if (t.due_date && t.due_date.slice(0, 10) < todayStr && t.status !== 'concluida') byUser[key].atrasada++;
+    });
+    const byUserRows = Object.entries(byUser);
+    document.getElementById('tbl-productivity-user').innerHTML = byUserRows.length ? `
+      <table><thead><tr><th>Responsável</th><th>Pendentes</th><th>Em andamento</th><th>Concluídas</th><th>Atrasadas</th></tr></thead><tbody>
+        ${byUserRows.map(([name, c]) => `<tr><td>${esc(name)}</td><td>${c.pendente || 0}</td><td>${c.em_andamento || 0}</td><td>${c.concluida || 0}</td><td>${c.atrasada ? badge(c.atrasada, 'atrasado') : 0}</td></tr>`).join('')}
+      </tbody></table>` : '<p class="muted">Nenhuma tarefa cadastrada ainda.</p>';
+
+    const byStatus = {};
+    processes.forEach((p) => { byStatus[p.status] = (byStatus[p.status] || 0) + 1; });
+    document.getElementById('tbl-processes-status').innerHTML = Object.keys(byStatus).length ? `
+      <table><thead><tr><th>Status</th><th>Quantidade</th></tr></thead><tbody>
+        ${Object.entries(byStatus).map(([status, n]) => `<tr><td>${badge(status, status === 'ativo' ? 'ativo' : 'inativo')}</td><td>${n}</td></tr>`).join('')}
+      </tbody></table>` : '<p class="muted">Nenhum processo cadastrado ainda.</p>';
   }
 
   // ---------- CLIENTES ----------
@@ -420,8 +458,9 @@
           <div class="field"><label>Status</label>
             <select id="f-status">${['ativo', 'suspenso', 'arquivado', 'encerrado'].map((s) => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
           </div>
-          <div class="field"><label>Responsável</label><input id="f-responsible" value="${esc(p.responsible || '')}"></div>
+          <div class="field"><label>Responsável (nome livre)</label><input id="f-responsible" value="${esc(p.responsible || '')}" placeholder="ex: advogado de escritório parceiro"></div>
         </div>
+        <div class="field"><label>Responsável (usuário do sistema)</label><select id="f-responsible_user_id"><option value="">—</option></select></div>
         <div class="g2">
           <div class="field"><label>Próximo prazo</label><input type="date" id="f-next_deadline" value="${p.next_deadline ? String(p.next_deadline).slice(0, 10) : ''}"></div>
           <div class="field"><label>Descrição do prazo</label><input id="f-next_deadline_desc" value="${esc(p.next_deadline_desc || '')}"></div>
@@ -435,6 +474,17 @@
     `);
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
     const form = document.getElementById('process-form');
+
+    api('/auth/users').then((users) => {
+      const sel = form.querySelector('#f-responsible_user_id');
+      users.forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.name;
+        if (p.responsible_user_id && String(p.responsible_user_id) === String(u.id)) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }).catch(() => {});
 
     if (id) {
       // edicao: select ja populado com options
@@ -473,6 +523,7 @@
         subject: document.getElementById('f-subject').value.trim(),
         status: document.getElementById('f-status').value,
         responsible: document.getElementById('f-responsible').value.trim(),
+        responsible_user_id: document.getElementById('f-responsible_user_id').value || null,
         next_deadline: document.getElementById('f-next_deadline').value || null,
         next_deadline_desc: document.getElementById('f-next_deadline_desc').value.trim()
       };
@@ -570,7 +621,8 @@
 
   // ---------- FINANCEIRO ----------
   async function loadFinance() {
-    const [entries, summary] = await Promise.all([api('/finance'), api('/finance/summary')]);
+    const [entries, summary, status] = await Promise.all([api('/finance'), api('/finance/summary'), api('/integrations/status').catch(() => null)]);
+    const asaasConfigured = status && status.asaas.configured;
     document.getElementById('finance-kpi-grid').innerHTML = `
       <div class="kpi"><div class="lbl">A receber</div><div class="val">${money(summary.receivable)}</div></div>
       <div class="kpi danger"><div class="lbl">Em atraso</div><div class="val">${money(summary.overdue)}</div></div>
@@ -589,6 +641,7 @@
         <td class="row-actions">
           ${f.status !== 'pago' ? `<span class="link-btn" data-pay="${f.id}">marcar pago</span>` : ''}
           ${f.client_id ? `<a class="link-btn" target="_blank" href="/api/finance/${f.id}/receipt?token=${encodeURIComponent(TOKEN)}">recibo</a>` : ''}
+          ${asaasConfigured && f.type === 'receber' && f.client_id ? (f.boleto_url ? `<a class="link-btn" target="_blank" href="${esc(f.boleto_url)}">ver boleto</a>` : `<span class="link-btn" data-gen-boleto="${f.id}">gerar boleto</span>`) : ''}
           <span class="link-btn" data-del-fin="${f.id}" style="color:var(--danger)">excluir</span>
         </td>
       </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nenhum lançamento financeiro.</td></tr>';
@@ -599,6 +652,17 @@
     }));
     tbody.querySelectorAll('[data-del-fin]').forEach((el) => el.addEventListener('click', async () => {
       if (confirm('Excluir este lançamento?')) { await api('/finance/' + el.dataset.delFin, { method: 'DELETE' }); loadFinance(); }
+    }));
+    tbody.querySelectorAll('[data-gen-boleto]').forEach((el) => el.addEventListener('click', async () => {
+      el.textContent = 'gerando...';
+      try {
+        const r = await api('/finance/' + el.dataset.genBoleto + '/boleto', { method: 'POST' });
+        window.open(r.boletoUrl, '_blank');
+        loadFinance();
+      } catch (err) {
+        alert('Erro ao gerar boleto: ' + err.message);
+        el.textContent = 'gerar boleto';
+      }
     }));
   }
 
@@ -670,12 +734,15 @@
       }
     });
 
+    const todayStr = new Date().toISOString().slice(0, 10);
     const tbody = document.querySelector('#tbl-tasks tbody');
-    tbody.innerHTML = tasks.length ? tasks.map((t) => `
-      <tr>
-        <td>${esc(t.title)}${t.description ? `<div class="muted">${esc(t.description)}</div>` : ''}${t.is_hearing ? '<div class="muted">📅 audiência/compromisso' + (t.google_event_link ? ` · <a href="${t.google_event_link}" target="_blank">ver na agenda</a>` : '') + '</div>' : ''}</td>
+    tbody.innerHTML = tasks.length ? tasks.map((t) => {
+      const isOverdue = t.due_date && t.due_date.slice(0, 10) < todayStr && t.status !== 'concluida';
+      return `
+      <tr${isOverdue ? ' style="background:var(--danger-soft)"' : ''}>
+        <td>${esc(t.title)}${t.description ? `<div class="muted">${esc(t.description)}</div>` : ''}${t.is_hearing ? '<div class="muted">📅 audiência/compromisso' + (t.google_event_link ? ` · <a href="${t.google_event_link}" target="_blank">ver na agenda</a>` : '') + '</div>' : ''}${t.assigned_name ? `<div class="muted">responsável: ${esc(t.assigned_name)}</div>` : ''}</td>
         <td>${esc(t.client_name || '—')}</td>
-        <td>${dateBR(t.due_date)}</td>
+        <td>${dateBR(t.due_date)}${isOverdue ? ' ' + badge('atrasada', 'atrasado') : ''}</td>
         <td>${badge(t.priority, t.priority)}</td>
         <td>
           <select data-status="${t.id}">
@@ -683,7 +750,8 @@
           </select>
         </td>
         <td><span class="link-btn" data-del-task="${t.id}" style="color:var(--danger)">excluir</span></td>
-      </tr>`).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma tarefa cadastrada.</td></tr>';
+      </tr>`;
+    }).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma tarefa cadastrada.</td></tr>';
 
     tbody.querySelectorAll('[data-status]').forEach((el) => el.addEventListener('change', async () => {
       await api('/tasks/' + el.dataset.status, { method: 'PUT', body: JSON.stringify({ status: el.value }) });
@@ -1051,6 +1119,158 @@
     } catch (err) {
       alert('Erro ao restaurar backup: ' + err.message);
     }
+  });
+
+  // ---------- MODELOS DE DOCUMENTOS ----------
+  async function loadTemplates() {
+    const templates = await api('/templates');
+    const options = await clientOptions();
+    document.getElementById('templates-list').innerHTML = templates.length ? `
+      <table><thead><tr><th>Título</th><th>Categoria</th><th></th></tr></thead><tbody>
+        ${templates.map((t) => `
+          <tr>
+            <td>${esc(t.title)}</td>
+            <td class="muted">${esc(t.category || '—')}</td>
+            <td class="row-actions">
+              <span class="link-btn" data-gen-template="${t.id}">gerar para cliente</span>
+              <span class="link-btn" data-edit-template="${t.id}">editar</span>
+              <span class="link-btn" data-del-template="${t.id}" style="color:var(--danger)">excluir</span>
+            </td>
+          </tr>`).join('')}
+      </tbody></table>` : '<p class="muted">Nenhum modelo cadastrado ainda.</p>';
+
+    document.querySelectorAll('[data-edit-template]').forEach((el) => el.addEventListener('click', () => openTemplateModal(el.dataset.editTemplate)));
+    document.querySelectorAll('[data-del-template]').forEach((el) => el.addEventListener('click', async () => {
+      if (confirm('Excluir este modelo?')) { await api('/templates/' + el.dataset.delTemplate, { method: 'DELETE' }); loadTemplates(); }
+    }));
+    document.querySelectorAll('[data-gen-template]').forEach((el) => el.addEventListener('click', async () => {
+      const templateId = el.dataset.genTemplate;
+      openModal(`
+        <h3>Gerar documento</h3>
+        <div class="field"><label>Cliente</label><select id="f-gen-client"><option value="">—</option>${options}</select></div>
+        <div class="field"><label>Processo (opcional)</label><select id="f-gen-process"><option value="">—</option></select></div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn-gold" id="btn-gen-confirm">Gerar</button>
+        </div>
+      `);
+      document.getElementById('modal-cancel').addEventListener('click', closeModal);
+      document.getElementById('f-gen-client').addEventListener('change', async (e) => {
+        const clientId = e.target.value;
+        const processSelect = document.getElementById('f-gen-process');
+        processSelect.innerHTML = '<option value="">—</option>';
+        if (!clientId) return;
+        const client = await api('/clients/' + clientId);
+        (client.processes || []).forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.number || `Processo #${p.id}`;
+          processSelect.appendChild(opt);
+        });
+      });
+      document.getElementById('btn-gen-confirm').addEventListener('click', () => {
+        const clientId = document.getElementById('f-gen-client').value;
+        const processId = document.getElementById('f-gen-process').value;
+        const params = new URLSearchParams({ token: TOKEN });
+        if (clientId) params.set('client_id', clientId);
+        if (processId) params.set('process_id', processId);
+        window.open(`${API}/templates/${templateId}/generate?${params.toString()}`, '_blank');
+        closeModal();
+      });
+    }));
+  }
+
+  document.getElementById('btn-new-template').addEventListener('click', () => openTemplateModal());
+
+  async function openTemplateModal(id) {
+    const t = id ? await api('/templates/' + id) : {};
+    openModal(`
+      <h3>${id ? 'Editar modelo' : 'Novo modelo'}</h3>
+      <form id="template-form">
+        <div class="field"><label>Título</label><input id="f-title" required value="${esc(t.title || '')}"></div>
+        <div class="field"><label>Categoria</label><input id="f-category" value="${esc(t.category || '')}" placeholder="ex: petição, contrato, procuração"></div>
+        <div class="field"><label>Conteúdo (HTML permitido)</label><textarea id="f-body" rows="12" required>${esc(t.body_html || '')}</textarea></div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-gold">Salvar</button>
+        </div>
+      </form>
+    `);
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('template-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        title: document.getElementById('f-title').value.trim(),
+        category: document.getElementById('f-category').value.trim(),
+        body_html: document.getElementById('f-body').value
+      };
+      if (id) await api('/templates/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+      else await api('/templates', { method: 'POST', body: JSON.stringify(payload) });
+      closeModal();
+      loadTemplates();
+    });
+  }
+
+  // ---------- EQUIPE ----------
+  async function loadTeam() {
+    const users = await api('/auth/users');
+    document.getElementById('team-list').innerHTML = users.length ? `
+      <table><thead><tr><th>Nome</th><th>E-mail</th><th>Função</th><th></th></tr></thead><tbody>
+        ${users.map((u) => `
+          <tr>
+            <td>${esc(u.name)}</td>
+            <td class="muted">${esc(u.email)}</td>
+            <td>${badge(u.role, u.role === 'admin' ? 'ativo' : 'lead')}</td>
+            <td>${u.id !== ME.id ? `<span class="link-btn" data-del-user="${u.id}" style="color:var(--danger)">remover</span>` : '<span class="muted">você</span>'}</td>
+          </tr>`).join('')}
+      </tbody></table>` : '<p class="muted">Nenhum usuário cadastrado.</p>';
+
+    document.querySelectorAll('[data-del-user]').forEach((el) => el.addEventListener('click', async () => {
+      if (confirm('Remover este usuário? Ele perderá acesso ao sistema imediatamente.')) {
+        try { await api('/auth/users/' + el.dataset.delUser, { method: 'DELETE' }); loadTeam(); }
+        catch (err) { alert(err.message); }
+      }
+    }));
+  }
+
+  document.getElementById('btn-new-user').addEventListener('click', () => {
+    openModal(`
+      <h3>Novo usuário</h3>
+      <form id="user-form">
+        <div class="field"><label>Nome</label><input id="f-name" required></div>
+        <div class="field"><label>E-mail</label><input type="email" id="f-email" required></div>
+        <div class="field"><label>Senha inicial</label><input type="password" id="f-password" required></div>
+        <div class="field"><label>Função</label>
+          <select id="f-role">
+            <option value="advogado">Advogado</option>
+            <option value="estagiario">Estagiário</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-gold">Criar usuário</button>
+        </div>
+      </form>
+    `);
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('f-name').value.trim(),
+        email: document.getElementById('f-email').value.trim(),
+        password: document.getElementById('f-password').value,
+        role: document.getElementById('f-role').value
+      };
+      try {
+        await api('/auth/users', { method: 'POST', body: JSON.stringify(payload) });
+        closeModal();
+        loadTeam();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 
   // ---------- boot ----------
