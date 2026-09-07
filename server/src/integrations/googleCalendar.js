@@ -33,19 +33,19 @@ function isConfigured() {
   return Boolean(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
 }
 
-function getSetting(key) {
-  const row = db.prepare('SELECT value FROM integration_settings WHERE key = ?').get(key);
+async function getSetting(key) {
+  const row = await db.get('SELECT value FROM integration_settings WHERE settings_key = ?', [key]);
   return row ? row.value : null;
 }
-function setSetting(key, value) {
-  db.prepare(`
-    INSERT INTO integration_settings (key, value) VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(key, value);
+async function setSetting(key, value) {
+  await db.run(`
+    INSERT INTO integration_settings (settings_key, value) VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE value = VALUES(value)
+  `, [key, value]);
 }
 
-function isConnected() {
-  return Boolean(getSetting('google_refresh_token'));
+async function isConnected() {
+  return Boolean(await getSetting('google_refresh_token'));
 }
 
 function getAuthUrl(state) {
@@ -75,7 +75,7 @@ async function exchangeCodeForTokens(code) {
 }
 
 async function getAccessToken() {
-  const refreshToken = getSetting('google_refresh_token');
+  const refreshToken = await getSetting('google_refresh_token');
   if (!refreshToken) {
     const err = new Error('Google Agenda não conectado. Conecte em Gestão > Google Agenda.');
     err.code = 'GOOGLE_NOT_CONNECTED';
@@ -99,12 +99,12 @@ async function connect(code) {
   if (!tokens.refresh_token) {
     throw new Error('O Google não devolveu um refresh_token (talvez a conexão já exista - revogue o acesso em myaccount.google.com/permissions e tente novamente).');
   }
-  setSetting('google_refresh_token', tokens.refresh_token);
+  await setSetting('google_refresh_token', tokens.refresh_token);
   return true;
 }
 
-function disconnect() {
-  db.prepare('DELETE FROM integration_settings WHERE key = ?').run('google_refresh_token');
+async function disconnect() {
+  await db.run('DELETE FROM integration_settings WHERE settings_key = ?', ['google_refresh_token']);
 }
 
 async function apiRequest(method, path, body) {

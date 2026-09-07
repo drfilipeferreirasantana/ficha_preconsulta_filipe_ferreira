@@ -123,32 +123,23 @@ function normalizeItem(item) {
  * cadastrado pelo numero, e gera notificacao. Nunca sobrescreve is_read de
  * itens ja existentes.
  */
-function processItems(items) {
-  const insertComm = db.prepare(`
-    INSERT OR IGNORE INTO djen_communications
-      (external_id, process_id, process_number, court, communication_type, org_name, class_name, content, link, sigiloso, disponibilizacao_date, matched, raw_json)
-    VALUES (@external_id, @process_id, @process_number, @court, @communication_type, @org_name, @class_name, @content, @link, @sigiloso, @disponibilizacao_date, @matched, @raw_json)
-  `);
-  const insertUpdate = db.prepare(`
-    INSERT INTO process_updates (process_id, description, date, source) VALUES (?, ?, ?, 'djen')
-  `);
-  const insertNotification = db.prepare(`
-    INSERT INTO notifications (process_id, title, message, source) VALUES (?, ?, ?, 'djen')
-  `);
-  const findProcess = db.prepare(`
-    SELECT id, client_id FROM processes WHERE REPLACE(REPLACE(REPLACE(number,'-',''),'.',''),' ','') = ?
-  `);
-
+async function processItems(items) {
   let created = 0;
   let matched = 0;
 
-  const tx = db.transaction((rawItems) => {
-    for (const raw of rawItems) {
+  await db.transaction(async (tx) => {
+    for (const raw of items) {
       const n = normalizeItem(raw);
       const processNumberKey = n.processNumber ? onlyDigits(n.processNumber) : null;
-      const process = processNumberKey ? findProcess.get(processNumberKey) : null;
+      const process = processNumberKey
+        ? await tx.get(`SELECT id, client_id FROM processes WHERE REPLACE(REPLACE(REPLACE(number,'-',''),'.',''),' ','') = ?`, [processNumberKey])
+        : null;
 
-      const info = insertComm.run({
+      const info = await tx.run(`
+        INSERT IGNORE INTO djen_communications
+          (external_id, process_id, process_number, court, communication_type, org_name, class_name, content, link, sigiloso, disponibilizacao_date, matched, raw_json)
+        VALUES (:external_id, :process_id, :process_number, :court, :communication_type, :org_name, :class_name, :content, :link, :sigiloso, :disponibilizacao_date, :matched, :raw_json)
+      `, {
         external_id: n.externalId,
         process_id: process ? process.id : null,
         process_number: n.processNumber,
@@ -174,15 +165,14 @@ function processItems(items) {
 
       if (process) {
         matched += 1;
-        insertUpdate.run(process.id, `[DJEN] ${n.type}: ${n.content}`.slice(0, 2000), n.date);
-        insertNotification.run(process.id, title, resumo);
+        await tx.run(`INSERT INTO process_updates (process_id, description, date, source) VALUES (?, ?, ?, 'djen')`, [process.id, `[DJEN] ${n.type}: ${n.content}`.slice(0, 2000), n.date]);
+        await tx.run(`INSERT INTO notifications (process_id, title, message, source) VALUES (?, ?, ?, 'djen')`, [process.id, title, resumo]);
       } else {
-        insertNotification.run(null, title, resumo);
+        await tx.run(`INSERT INTO notifications (process_id, title, message, source) VALUES (?, ?, ?, 'djen')`, [null, title, resumo]);
       }
     }
   });
 
-  tx(items);
   return { fetched: items.length, created, matched };
 }
 
@@ -206,12 +196,12 @@ function sleep(ms) {
 }
 
 /** Grava o resultado (sucesso/erro/sem novidade) da ultima verificacao de um processo monitorado. */
-function finalizeMonitorResult(processId, { status, error, movementDate }) {
-  db.prepare(`
-    UPDATE processes SET last_sync_at = datetime('now'), last_monitor_status = ?, last_monitor_error = ?,
+async function finalizeMonitorResult(processId, { status, error, movementDate }) {
+  await db.run(`
+    UPDATE processes SET last_sync_at = NOW(), last_monitor_status = ?, last_monitor_error = ?,
       last_movement_date = COALESCE(?, last_movement_date)
     WHERE id = ?
-  `).run(status, error || null, movementDate || null, processId);
+  `, [status, error || null, movementDate || null, processId]);
 }
 
 /**
@@ -223,21 +213,21 @@ async function searchMonitoredProcess(process, { days = 5 } = {}) {
   const { dataInicio, dataFim } = dateRangeFor(days);
   try {
     const { items } = await fetchComunicacoes({ dataInicio, dataFim, numeroProcesso: process.number });
-    return finishMonitorProcessing(process, items);
+    return await finishMonitorProcessing(process, items);
   } catch (err) {
-    finalizeMonitorResult(process.id, { status: 'erro', error: err.message });
+    await finalizeMonitorResult(process.id, { status: 'erro', error: err.message });
     return { processId: process.id, status: 'erro', error: err.message, created: 0 };
   }
 }
 
 /** Processa itens ja obtidos (de qualquer origem) para UM processo monitorado e grava o resultado. */
-function finishMonitorProcessing(process, items) {
-  const { created, matched } = processItems(items);
+async function finishMonitorProcessing(process, items) {
+  const { created, matched } = await processItems(items);
   const latestDate = items.reduce((max, it) => {
     const d = it.data_disponibilizacao;
     return d && (!max || d > max) ? d : max;
   }, null);
-  finalizeMonitorResult(process.id, {
+  await finalizeMonitorResult(process.id, {
     status: created > 0 ? 'sucesso' : 'sem_movimentacao',
     error: null,
     movementDate: latestDate
@@ -246,13 +236,13 @@ function finishMonitorProcessing(process, items) {
 }
 
 /** Lista os processos com monitoramento ativo (monitoring_mode='automatico' e numero preenchido). */
-function listMonitoredProcesses() {
-  return db.prepare(`
+async function listMonitoredProcesses() {
+  return db.all(`
     SELECT processes.*, clients.name AS client_name
     FROM processes JOIN clients ON clients.id = processes.client_id
     WHERE processes.monitoring_mode = 'automatico' AND processes.number IS NOT NULL AND processes.number != ''
     ORDER BY processes.number
-  `).all();
+  `);
 }
 
 /**
@@ -262,7 +252,7 @@ function listMonitoredProcesses() {
  * interrompe os demais.
  */
 async function batchSearchMonitored({ days = 5 } = {}) {
-  const processes = listMonitoredProcesses();
+  const processes = await listMonitoredProcesses();
   const results = [];
   for (const process of processes) {
     results.push(await searchMonitoredProcess(process, { days }));

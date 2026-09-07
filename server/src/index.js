@@ -14,6 +14,7 @@ const backupRoutes = require('./routes/backup');
 const templateRoutes = require('./routes/templates');
 const publicRoutes = require('./routes/public');
 const djen = require('./integrations/djen');
+const db = require('./db');
 
 const app = express();
 app.use(cors());
@@ -50,20 +51,30 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Sistema Filipe Ferreira Advogados rodando em http://localhost:${PORT}`);
 
-  if (djen.isConfigured()) {
-    const intervalHours = Number(process.env.DJEN_SYNC_INTERVAL_HOURS) || 6;
-    const runSync = () => {
-      djen.syncOfficeNotifications({ days: 7 })
-        .then((r) => console.log(`[djen] sync ok - ${r.fetched} comunicacoes, ${r.created} novas, ${r.matched} vinculadas a processos`))
-        .catch((err) => console.error('[djen] falha na sincronizacao automatica:', err.message));
-    };
-    runSync();
-    setInterval(runSync, intervalHours * 60 * 60 * 1000);
-    console.log(`[djen] sincronizacao automatica ativa a cada ${intervalHours}h (OAB configurada)`);
-  } else {
-    console.log('[djen] integracao inativa: defina ADVOGADO_OAB_NUMERO e ADVOGADO_OAB_UF no .env para ativar');
-  }
-});
+// O banco (MySQL) precisa estar pronto - tabelas criadas, migracoes e seeds
+// aplicados - antes do servidor comecar a aceitar requisicoes.
+db.ready()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Sistema Filipe Ferreira Advogados rodando em http://localhost:${PORT}`);
+
+      if (djen.isConfigured()) {
+        const intervalHours = Number(process.env.DJEN_SYNC_INTERVAL_HOURS) || 6;
+        const runSync = () => {
+          djen.syncOfficeNotifications({ days: 7 })
+            .then((r) => console.log(`[djen] sync ok - ${r.fetched} comunicacoes, ${r.created} novas, ${r.matched} vinculadas a processos`))
+            .catch((err) => console.error('[djen] falha na sincronizacao automatica:', err.message));
+        };
+        runSync();
+        setInterval(runSync, intervalHours * 60 * 60 * 1000);
+        console.log(`[djen] sincronizacao automatica ativa a cada ${intervalHours}h (OAB configurada)`);
+      } else {
+        console.log('[djen] integracao inativa: defina ADVOGADO_OAB_NUMERO e ADVOGADO_OAB_UF no .env para ativar');
+      }
+    });
+  })
+  .catch((err) => {
+    console.error('[setup] Falha ao preparar o banco de dados MySQL:', err.message);
+    process.exit(1);
+  });

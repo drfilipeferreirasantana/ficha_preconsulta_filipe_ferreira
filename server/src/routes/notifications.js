@@ -6,7 +6,7 @@ const whatsapp = require('../utils/whatsapp');
 const router = express.Router();
 router.use(requireAuth);
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { unread } = req.query;
   let sql = `
     SELECT notifications.*, processes.number AS process_number, clients.name AS client_name, clients.phone AS client_phone
@@ -17,7 +17,7 @@ router.get('/', (req, res) => {
   const params = [];
   if (unread === '1') { sql += ' AND notifications.is_read = 0'; }
   sql += ' ORDER BY notifications.created_at DESC LIMIT 200';
-  const rows = db.prepare(sql).all(...params);
+  const rows = await db.all(sql, params);
   const withLinks = rows.map((n) => ({
     ...n,
     whatsapp_link: n.client_phone ? whatsapp.buildWhatsappLink(n.client_phone, whatsapp.processUpdateMessage({
@@ -27,13 +27,13 @@ router.get('/', (req, res) => {
   res.json(withLinks);
 });
 
-router.post('/:id/read', (req, res) => {
-  db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').run(req.params.id);
+router.post('/:id/read', async (req, res) => {
+  await db.run('UPDATE notifications SET is_read = 1 WHERE id = ?', [req.params.id]);
   res.status(204).end();
 });
 
-router.post('/read-all', (req, res) => {
-  db.prepare('UPDATE notifications SET is_read = 1 WHERE is_read = 0').run();
+router.post('/read-all', async (req, res) => {
+  await db.run('UPDATE notifications SET is_read = 1 WHERE is_read = 0');
   res.status(204).end();
 });
 

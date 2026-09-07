@@ -7,16 +7,68 @@ notificações judiciais via **DJEN** (Diário de Justiça Eletrônico Nacional)
 ## Estrutura
 
 ```
-server/   -> backend (Node.js + Express + SQLite)
+server/   -> backend (Node.js + Express + MySQL)
 public/   -> frontend (SPA em HTML/CSS/JS puro) + ficha de pré-consulta pública
 index.html -> ficha de pré-consulta original (mantida como estava)
 ```
+
+## Banco de dados (MySQL)
+
+O sistema usa **MySQL** (driver `mysql2`) — funciona com um banco criado na
+própria hospedagem (ex: Hostinger) ou em qualquer provedor MySQL/MariaDB.
+Isso resolve de vez o problema do Render free-tier apagar os dados a cada
+deploy: o banco fica fora do disco do Render, então um redeploy não afeta
+mais os dados.
+
+### Criando o banco na Hostinger
+
+1. No hPanel, vá em **Bancos de Dados > Bancos de Dados MySQL** e crie um
+   banco novo (anote nome do banco, usuário e senha).
+2. Na mesma tela, em **Acesso Remoto ao MySQL**, adicione o host que vai se
+   conectar de fora (o Render). Se a Hostinger só aceitar um IP específico
+   (não um intervalo/`%`), você vai precisar do **IP de saída estático** do
+   seu serviço no Render — isso normalmente exige um plano pago do Render
+   (o plano Free não tem IP de saída fixo). Se sua Hostinger permitir `%`
+   (qualquer host), pode usar direto no plano Free.
+3. Anote o **host** do banco (em hPanel costuma aparecer como algo do tipo
+   `sql123.hostinger.com` ou o próprio IP do servidor de hospedagem — a
+   tela de "Acesso Remoto" mostra o host correto a usar de fora).
+
+### Configurando
+
+No `.env` (local) ou nas variáveis de ambiente do Render (produção):
+
+```
+DB_HOST=<host do banco na Hostinger>
+DB_PORT=3306
+DB_USER=<usuario do banco>
+DB_PASSWORD=<senha do banco>
+DB_NAME=<nome do banco>
+```
+
+Ao iniciar, o sistema cria automaticamente todas as tabelas (se não
+existirem), aplica migrações e cria o usuário administrador padrão — não é
+preciso rodar nenhum script manual.
+
+### Migrando dados de uma instalação antiga (SQLite, no Render)
+
+Se você já tinha o sistema rodando com o banco antigo (SQLite), use a própria
+tela de **Backup** do sistema:
+
+1. No sistema **antigo**, vá em Backup e clique em "Exportar" — baixa um
+   `.json` com todos os dados.
+2. Configure o sistema **novo** já apontando para o MySQL (variáveis acima)
+   e faça o primeiro deploy/start (ele já sobe com as tabelas vazias).
+3. No sistema **novo**, vá em Backup e clique em "Importar", escolhendo o
+   `.json` baixado no passo 1.
+
+Isso preserva todos os IDs e vínculos entre clientes, processos e financeiro.
 
 ## Como rodar localmente
 
 ```bash
 cd server
-cp .env.example .env      # edite os valores, principalmente ADMIN_PASSWORD e JWT_SECRET
+cp .env.example .env      # edite os valores, principalmente ADMIN_PASSWORD, JWT_SECRET e DB_*
 npm install
 npm start
 ```

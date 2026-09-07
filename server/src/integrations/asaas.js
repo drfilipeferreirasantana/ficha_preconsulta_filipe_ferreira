@@ -54,7 +54,7 @@ async function ensureCustomer(client) {
     email: client.email || undefined,
     phone: (client.phone || '').replace(/\D/g, '') || undefined
   });
-  db.prepare('UPDATE clients SET asaas_customer_id = ? WHERE id = ?').run(customer.id, client.id);
+  await db.run('UPDATE clients SET asaas_customer_id = ? WHERE id = ?', [customer.id, client.id]);
   return customer.id;
 }
 
@@ -73,8 +73,8 @@ async function createBoleto(financeEntry, client) {
     dueDate: financeEntry.due_date || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     description: financeEntry.description
   });
-  db.prepare('UPDATE finance_entries SET asaas_charge_id = ?, boleto_url = ? WHERE id = ?')
-    .run(charge.id, charge.bankSlipUrl || charge.invoiceUrl, financeEntry.id);
+  await db.run('UPDATE finance_entries SET asaas_charge_id = ?, boleto_url = ? WHERE id = ?',
+    [charge.id, charge.bankSlipUrl || charge.invoiceUrl, financeEntry.id]);
   return { chargeId: charge.id, boletoUrl: charge.bankSlipUrl || charge.invoiceUrl };
 }
 

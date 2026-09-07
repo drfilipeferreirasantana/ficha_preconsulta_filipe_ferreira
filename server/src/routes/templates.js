@@ -4,38 +4,38 @@ const { requireAuth, requireAuthFlexible } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT * FROM document_templates ORDER BY title').all());
+router.get('/', requireAuth, async (req, res) => {
+  res.json(await db.all('SELECT * FROM document_templates ORDER BY title'));
 });
 
-router.get('/:id', requireAuth, (req, res) => {
-  const t = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(req.params.id);
+router.get('/:id', requireAuth, async (req, res) => {
+  const t = await db.get('SELECT * FROM document_templates WHERE id = ?', [req.params.id]);
   if (!t) return res.status(404).json({ error: 'Modelo não encontrado.' });
   res.json(t);
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   const { title, category, body_html } = req.body || {};
   if (!title || !body_html) return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
-  const info = db.prepare(`
+  const info = await db.run(`
     INSERT INTO document_templates (title, category, body_html) VALUES (?, ?, ?)
-  `).run(title, category || null, body_html);
-  res.status(201).json(db.prepare('SELECT * FROM document_templates WHERE id = ?').get(info.lastInsertRowid));
+  `, [title, category || null, body_html]);
+  res.status(201).json(await db.get('SELECT * FROM document_templates WHERE id = ?', [info.lastInsertRowid]));
 });
 
-router.put('/:id', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(req.params.id);
+router.put('/:id', requireAuth, async (req, res) => {
+  const existing = await db.get('SELECT * FROM document_templates WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Modelo não encontrado.' });
-  const b = { ...existing, ...req.body, updated_at: new Date().toISOString() };
-  db.prepare(`
-    UPDATE document_templates SET title=@title, category=@category, body_html=@body_html, updated_at=@updated_at
-    WHERE id=@id
-  `).run(b);
-  res.json(db.prepare('SELECT * FROM document_templates WHERE id = ?').get(req.params.id));
+  const b = { ...existing, ...req.body };
+  await db.run(`
+    UPDATE document_templates SET title=:title, category=:category, body_html=:body_html
+    WHERE id=:id
+  `, b);
+  res.json(await db.get('SELECT * FROM document_templates WHERE id = ?', [req.params.id]));
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM document_templates WHERE id = ?').run(req.params.id);
+router.delete('/:id', requireAuth, async (req, res) => {
+  await db.run('DELETE FROM document_templates WHERE id = ?', [req.params.id]);
   res.status(204).end();
 });
 
@@ -46,13 +46,13 @@ function fillPlaceholders(html, data) {
 // Gera o documento preenchido para um cliente (e opcionalmente processo),
 // como HTML pronto para imprimir/"salvar como PDF" - mesma abordagem do
 // recibo. Usa requireAuthFlexible porque e aberto direto em nova aba.
-router.get('/:id/generate', requireAuthFlexible, (req, res) => {
-  const template = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(req.params.id);
+router.get('/:id/generate', requireAuthFlexible, async (req, res) => {
+  const template = await db.get('SELECT * FROM document_templates WHERE id = ?', [req.params.id]);
   if (!template) return res.status(404).send('Modelo não encontrado.');
 
   const { client_id, process_id } = req.query;
-  const client = client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) : null;
-  const process = process_id ? db.prepare('SELECT * FROM processes WHERE id = ?').get(process_id) : null;
+  const client = client_id ? await db.get('SELECT * FROM clients WHERE id = ?', [client_id]) : null;
+  const process = process_id ? await db.get('SELECT * FROM processes WHERE id = ?', [process_id]) : null;
 
   const data = {
     cliente_nome: client ? client.name : '',

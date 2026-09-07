@@ -5,12 +5,12 @@ const { signToken, requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Informe e-mail e senha.' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+  const user = await db.get('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'E-mail ou senha invalidos.' });
   }
@@ -26,7 +26,7 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 // Criacao de novos usuarios da equipe - somente admin
-router.post('/users', requireAuth, (req, res) => {
+router.post('/users', requireAuth, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Apenas administradores podem criar usuarios.' });
   }
@@ -36,28 +36,29 @@ router.post('/users', requireAuth, (req, res) => {
   }
   const hash = bcrypt.hashSync(password, 10);
   try {
-    const info = db.prepare(
-      'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)'
-    ).run(name, email.toLowerCase().trim(), hash, role || 'advogado');
+    const info = await db.run(
+      'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+      [name, email.toLowerCase().trim(), hash, role || 'advogado']
+    );
     res.status(201).json({ id: info.lastInsertRowid });
   } catch (err) {
     res.status(400).json({ error: 'Nao foi possivel criar o usuario (e-mail ja cadastrado?).' });
   }
 });
 
-router.get('/users', requireAuth, (req, res) => {
-  const users = db.prepare('SELECT id, name, email, role, created_at FROM users ORDER BY name').all();
+router.get('/users', requireAuth, async (req, res) => {
+  const users = await db.all('SELECT id, name, email, role, created_at FROM users ORDER BY name');
   res.json(users);
 });
 
-router.delete('/users/:id', requireAuth, (req, res) => {
+router.delete('/users/:id', requireAuth, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Apenas administradores podem remover usuarios.' });
   }
   if (Number(req.params.id) === req.user.id) {
     return res.status(400).json({ error: 'Você não pode remover seu próprio usuário.' });
   }
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  await db.run('DELETE FROM users WHERE id = ?', [req.params.id]);
   res.status(204).end();
 });
 

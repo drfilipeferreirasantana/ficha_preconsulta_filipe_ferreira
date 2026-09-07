@@ -10,7 +10,7 @@ const asaas = require('../integrations/asaas');
 
 const router = express.Router();
 
-router.get('/status', requireAuth, (req, res) => {
+router.get('/status', requireAuth, async (req, res) => {
   res.json({
     djen: {
       configured: djen.isConfigured(),
@@ -18,7 +18,7 @@ router.get('/status', requireAuth, (req, res) => {
       ufOab: process.env.ADVOGADO_OAB_UF || null
     },
     pje_mni: { configured: pje.configured },
-    google_calendar: { configured: googleCalendar.isConfigured(), connected: googleCalendar.isConnected() },
+    google_calendar: { configured: googleCalendar.isConfigured(), connected: await googleCalendar.isConnected() },
     email: { configured: email.isConfigured() },
     asaas: { configured: asaas.isConfigured() }
   });
@@ -52,18 +52,18 @@ router.post('/djen/sync', requireAuth, async (req, res) => {
 // deduplicacao/vinculacao do sync feito pelo servidor. Existe porque a API
 // do DJEN pode bloquear chamadas vindas de fora do Brasil - um navegador
 // brasileiro contorna isso, um servidor hospedado fora nao.
-router.post('/djen/ingest', requireAuth, (req, res) => {
+router.post('/djen/ingest', requireAuth, async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : null;
   if (!items) return res.status(400).json({ error: 'Envie { items: [...] } com os itens retornados pela API do DJEN.' });
   try {
-    const result = djen.processItems(items);
+    const result = await djen.processItems(items);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: 'Falha ao processar itens: ' + err.message });
   }
 });
 
-router.get('/djen/communications', requireAuth, (req, res) => {
+router.get('/djen/communications', requireAuth, async (req, res) => {
   const { matched, unread } = req.query;
   let sql = `
     SELECT djen_communications.*, clients.name AS client_name, clients.phone AS client_phone
@@ -75,28 +75,28 @@ router.get('/djen/communications', requireAuth, (req, res) => {
   if (matched === '0' || matched === '1') { sql += ' AND djen_communications.matched = ?'; params.push(matched); }
   if (unread === '1') { sql += ' AND djen_communications.is_read = 0'; }
   sql += ' ORDER BY djen_communications.disponibilizacao_date DESC, djen_communications.id DESC LIMIT 300';
-  res.json(db.prepare(sql).all(...params));
+  res.json(await db.all(sql, params));
 });
 
-router.post('/djen/communications/:id/read', requireAuth, (req, res) => {
-  db.prepare('UPDATE djen_communications SET is_read = 1 WHERE id = ?').run(req.params.id);
+router.post('/djen/communications/:id/read', requireAuth, async (req, res) => {
+  await db.run('UPDATE djen_communications SET is_read = 1 WHERE id = ?', [req.params.id]);
   res.status(204).end();
 });
 
-router.post('/djen/communications/read-all', requireAuth, (req, res) => {
-  db.prepare('UPDATE djen_communications SET is_read = 1 WHERE is_read = 0').run();
+router.post('/djen/communications/read-all', requireAuth, async (req, res) => {
+  await db.run('UPDATE djen_communications SET is_read = 1 WHERE is_read = 0');
   res.status(204).end();
 });
 
-router.delete('/djen/communications/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM djen_communications WHERE id = ?').run(req.params.id);
+router.delete('/djen/communications/:id', requireAuth, async (req, res) => {
+  await db.run('DELETE FROM djen_communications WHERE id = ?', [req.params.id]);
   res.status(204).end();
 });
 
 // ---- Processos monitorados (movimentacao por processo especifico) ----
 
-router.get('/djen/monitored', requireAuth, (req, res) => {
-  res.json(djen.listMonitoredProcesses());
+router.get('/djen/monitored', requireAuth, async (req, res) => {
+  res.json(await djen.listMonitoredProcesses());
 });
 
 // Busca em lote pelo SERVIDOR - itera os processos monitorados chamando o
@@ -117,15 +117,15 @@ router.post('/djen/monitor/search', requireAuth, async (req, res) => {
 // processo monitorado especifico, e grava o resultado da mesma forma que a
 // busca pelo servidor faria - usado como fallback quando o servidor nao
 // alcanca a API do DJEN.
-router.post('/djen/monitor/ingest', requireAuth, (req, res) => {
+router.post('/djen/monitor/ingest', requireAuth, async (req, res) => {
   const { process_id, items } = req.body || {};
   if (!process_id || !Array.isArray(items)) {
     return res.status(400).json({ error: 'Envie { process_id, items: [...] }.' });
   }
-  const process = db.prepare('SELECT * FROM processes WHERE id = ?').get(process_id);
+  const process = await db.get('SELECT * FROM processes WHERE id = ?', [process_id]);
   if (!process) return res.status(404).json({ error: 'Processo não encontrado.' });
   try {
-    const result = djen.finishMonitorProcessing(process, items);
+    const result = await djen.finishMonitorProcessing(process, items);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -168,8 +168,8 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-router.post('/google/disconnect', requireAuth, (req, res) => {
-  googleCalendar.disconnect();
+router.post('/google/disconnect', requireAuth, async (req, res) => {
+  await googleCalendar.disconnect();
   res.status(204).end();
 });
 
