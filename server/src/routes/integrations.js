@@ -63,8 +63,14 @@ router.post('/djen/ingest', requireAuth, async (req, res) => {
   }
 });
 
+// Aceita "q" para filtrar por tribunal (sigla, ex: TJMG), numero do
+// processo, orgao, classe ou conteudo - util porque o DJEN ja traz
+// intimacoes de TODOS os tribunais do pais numa unica busca por OAB (nao
+// e preciso configurar cada tribunal separadamente); esse filtro so
+// ajuda a encontrar as de um tribunal especifico dentro do que ja foi
+// sincronizado.
 router.get('/djen/communications', requireAuth, async (req, res) => {
-  const { matched, unread } = req.query;
+  const { matched, unread, q } = req.query;
   let sql = `
     SELECT djen_communications.*, clients.name AS client_name, clients.phone AS client_phone
     FROM djen_communications
@@ -74,6 +80,15 @@ router.get('/djen/communications', requireAuth, async (req, res) => {
   const params = [];
   if (matched === '0' || matched === '1') { sql += ' AND djen_communications.matched = ?'; params.push(matched); }
   if (unread === '1') { sql += ' AND djen_communications.is_read = 0'; }
+  if (q) {
+    sql += ` AND (
+      djen_communications.court LIKE ? OR djen_communications.process_number LIKE ? OR
+      djen_communications.org_name LIKE ? OR djen_communications.class_name LIKE ? OR
+      djen_communications.content LIKE ?
+    )`;
+    const like = `%${q}%`;
+    params.push(like, like, like, like, like);
+  }
   sql += ' ORDER BY djen_communications.disponibilizacao_date DESC, djen_communications.id DESC LIMIT 300';
   res.json(await db.all(sql, params));
 });

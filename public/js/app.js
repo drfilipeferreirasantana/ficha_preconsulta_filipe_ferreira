@@ -1015,13 +1015,18 @@
     const status = await api('/integrations/status').catch(() => null);
     const noticeEl = document.getElementById('djen-notice');
     if (status && status.djen.configured) {
-      noticeEl.innerHTML = `Configurado para OAB ${esc(status.djen.numeroOab)}/${esc(status.djen.ufOab)}. Se "Buscar pelo servidor" falhar (a API do DJEN pode bloquear IPs fora do Brasil, dependendo de onde o servidor está hospedado), use "Buscar agora (pelo navegador)" — funciona sempre, mas só busca enquanto esta aba estiver aberta.`;
+      noticeEl.innerHTML = `Configurado para OAB ${esc(status.djen.numeroOab)}/${esc(status.djen.ufOab)}. A busca já traz intimações de <strong>todos os tribunais do país</strong> (TJMG, TJES, TRFs, TRTs etc.) numa única consulta — use o campo de busca abaixo para filtrar por um tribunal específico (ex: "TJMG"). Se "Buscar pelo servidor" falhar (a API do DJEN pode bloquear IPs fora do Brasil, dependendo de onde o servidor está hospedado), use "Buscar agora (pelo navegador)" — funciona sempre, mas só busca enquanto esta aba estiver aberta.`;
     } else {
       noticeEl.innerHTML = `Não configurado neste servidor (faltam ADVOGADO_OAB_NUMERO / ADVOGADO_OAB_UF).`;
     }
 
     const showRead = document.getElementById('djen-show-read').checked;
-    const items = await api('/integrations/djen/communications' + (showRead ? '' : '?unread=1')).catch(() => []);
+    const q = document.getElementById('djen-search').value.trim();
+    const params = new URLSearchParams();
+    if (!showRead) params.set('unread', '1');
+    if (q) params.set('q', q);
+    const qs = params.toString();
+    const items = await api('/integrations/djen/communications' + (qs ? '?' + qs : '')).catch(() => []);
     document.getElementById('djen-list').innerHTML = items.length
       ? items.map(djenSummaryRow).join('')
       : '<p class="muted">Nenhuma intimação para exibir.</p>';
@@ -1039,6 +1044,12 @@
   }
 
   document.getElementById('djen-show-read').addEventListener('change', loadDjenPanel);
+
+  let djenSearchTimer = null;
+  document.getElementById('djen-search').addEventListener('input', () => {
+    clearTimeout(djenSearchTimer);
+    djenSearchTimer = setTimeout(loadDjenPanel, 350);
+  });
 
   document.getElementById('btn-djen-test').addEventListener('click', async (e) => {
     const btn = e.target;

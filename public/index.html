@@ -223,9 +223,13 @@
       </div>
       <div class="notice" id="djen-notice"></div>
       <div class="panel">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:1rem;cursor:pointer">
-          <input type="checkbox" id="djen-show-read" style="width:15px;height:15px"> Mostrar também as já lidas
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+            <input type="checkbox" id="djen-show-read" style="width:15px;height:15px"> Mostrar também as já lidas
+          </label>
+          <input type="text" id="djen-search" placeholder="Buscar por tribunal (ex: TJMG), nº do processo, órgão ou texto"
+            style="flex:1;min-width:260px;max-width:420px;padding:10px 12px;border:1px solid var(--border);border-radius:2px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:12.5px">
+        </div>
         <div id="djen-list"></div>
       </div>
     </div>
