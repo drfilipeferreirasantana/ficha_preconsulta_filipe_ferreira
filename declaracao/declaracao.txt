@@ -1,0 +1,8 @@
+DECLARAÇÃO DE INTENÇÃO E FÉ - MINERAÇÃO SOLO SHA-256
+
+Minerador: Filipe Ferreira Santana
+Data e Hora da Declaração: 12 de Outubro de 2026, 21:24 (Horário de Brasília)
+Hardware/Poder de Processamento Declarado: 18.49 MH/s
+Alvo: Rede SHA-256 (Bitcoin / Bloco Solo)
+Probabilidade Discutida: ~1 em 54 trilhões por bloco (1 bilhão de anos estimados)
+Propósito: Prova cronológica de que o minerador estava plenamente ciente da impossibilidade matemática e estatística de encontrar um bloco solo com o hardware atual, atribuindo qualquer eventual sucesso futuro unicamente à sua fé e a um milagre manifesto.
