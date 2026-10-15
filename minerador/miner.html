@@ -803,6 +803,25 @@ function startJob(){
 }
 
 let hashrateTimer = null;
+
+// Informa a taxa ao proxy, para o painel do computador somar as duas frentes.
+// Canal HTTP proprio, separado do Stratum: se falhar, a mineracao nao sente.
+// So funciona quando a pagina veio do proxy; aberta de outro jeito, apenas
+// nao informa, sem erro visivel.
+let ultimoAviso = 0;
+function informarTaxa(hps){
+  const agora = Date.now();
+  if (agora - ultimoAviso < 5000) return;      // no maximo a cada 5 s
+  ultimoAviso = agora;
+  try {
+    fetch('/taxa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hashrate: hps, motor: (window.motorAtual || '') }),
+      keepalive: true
+    }).catch(function(){ /* sem proxy do outro lado: segue minerando */ });
+  } catch(e) { /* navegador sem fetch: idem */ }
+}
 let blobUrl = null;
 
 function startMining(){
@@ -847,6 +866,7 @@ function startMining(){
       const inst = hashAccum / dt;
       hashrateEma = hashrateEma > 0 ? (hashrateEma*0.6 + inst*0.4) : inst;
       hashrateEl.textContent = fmtHashrate(hashrateEma);
+      informarTaxa(hashrateEma);
       updateEta();
       hashAccum = 0;
       lastRateAt = agora;

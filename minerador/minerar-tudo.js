@@ -67,6 +67,20 @@ function ips() {
   return fora;
 }
 
+// Com dificuldade 1, cada share exige 2^32 hashes em media. A 8 MH/s isso da
+// cerca de 9 minutos. Sem este aviso, "shares 0" parece defeito quando e so
+// o relogio.
+function esperaShare() {
+  if ((pc.aceitos + cel.aceitos) > 0) return '';
+  const taxa = pc.taxa + (cel.taxaReal || cel.taxaEstimada);
+  const dif = pc.dif || cel.dif;
+  if (!taxa || !dif) return '';
+  const seg = (dif * 4294967296) / taxa;
+  const decorrido = (Date.now() - inicio) / 1000;
+  if (decorrido > seg * 3) return ' (demorando mais que o previsto)';
+  return ' (1o em ~' + Math.ceil(seg / 60) + ' min)';
+}
+
 function fmt(h) {
   if (!isFinite(h) || h <= 0) return '---';
   if (h >= 1e9) return (h / 1e9).toFixed(2) + ' GH/s';
@@ -80,7 +94,7 @@ function fmt(h) {
 // ---------------------------------------------------------------------------
 const pc  = { taxa: 0, aceitos: 0, rejeitados: 0, dif: null, ligado: false };
 const cel = { conectado: false, aceitos: 0, rejeitados: 0, dif: null,
-              desde: null, taxaEstimada: 0 };
+              desde: null, taxaEstimada: 0, taxaReal: 0, taxaRealEm: 0 };
 let blocos = 0;
 const inicio = Date.now();
 
@@ -211,6 +225,9 @@ escutar(proc.proxy, (l) => {
   if (/celular desconectou/i.test(l)) cel.conectado = false;
   const d = l.match(/dificuldade do pool:\s*([\d.]+)/i);
   if (d) cel.dif = parseFloat(d[1]);
+  // taxa informada pela propria pagina: exata, e nao estimativa
+  const t = l.match(/taxa do celular:\s*(\d+)\s*H\/s/i);
+  if (t) { cel.taxaReal = +t[1]; cel.taxaRealEm = Date.now(); }
   if (/share aceito/i.test(l)) cel.aceitos++;
   if (/REJEITADO/i.test(l)) cel.rejeitados++;
   if (/BLOCO ENCONTRADO/i.test(l)) { blocos++; alarme('CELULAR', l); }
@@ -238,16 +255,22 @@ const painel = setInterval(() => {
     const seg = (Date.now() - cel.desde) / 1000;
     if (seg > 5) cel.taxaEstimada = (cel.aceitos * cel.dif * 4294967296) / seg;
   }
-  if (!cel.conectado) cel.taxaEstimada = 0;
+  if (!cel.conectado) { cel.taxaEstimada = 0; cel.taxaReal = 0; }
+  // a taxa informada vence a estimada; se parar de chegar, envelhece em 30 s
+  if (cel.taxaReal && Date.now() - cel.taxaRealEm > 30000) cel.taxaReal = 0;
 
-  const total = pc.taxa + cel.taxaEstimada;
+  const taxaCel = cel.taxaReal || cel.taxaEstimada;
+  const total = pc.taxa + taxaCel;
   const horas = (Date.now() - inicio) / 3600000;
 
   const linha =
     '  TOTAL ' + fmt(total).padEnd(11) +
     '|  PC ' + fmt(pc.taxa).padEnd(11) +
-    '|  CEL ' + (cel.conectado ? (cel.taxaEstimada ? '~' + fmt(cel.taxaEstimada) : 'ligado') : 'desligado').padEnd(12) +
-    '|  shares ' + (pc.aceitos + cel.aceitos) +
+    '|  CEL ' + (cel.conectado
+        ? (cel.taxaReal ? fmt(cel.taxaReal)
+          : cel.taxaEstimada ? '~' + fmt(cel.taxaEstimada) : 'ligado')
+        : 'desligado').padEnd(12) +
+    '|  shares ' + (pc.aceitos + cel.aceitos) + esperaShare() +
     (blocos ? '  |  BLOCOS ' + blocos : '') +
     '  |  ' + horas.toFixed(1) + 'h   ';
   process.stdout.write('\r' + linha);

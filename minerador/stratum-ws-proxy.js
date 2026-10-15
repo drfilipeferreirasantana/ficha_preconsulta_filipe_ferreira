@@ -111,7 +111,38 @@ function guardaGenesis() {
   console.log('[proxy] guarda do bloco genesis: OK');
 }
 
+let taxaCelular = 0;        // ultima taxa informada pela pagina
+let taxaCelularEm = 0;     // quando foi informada, para saber se envelheceu
+
 const server = http.createServer((req, res) => {
+  // Canal SEPARADO para a pagina informar a propria taxa.
+  //
+  // Por que nao pelo Stratum: aquela conexao e repassada byte a byte ao pool,
+  // e mensagem estranha ali poderia derrubar a sessao ou ser tratada como
+  // trafego malformado. Aqui e HTTP comum, do lado do servidor, e nao toca na
+  // mineracao. Se a pagina for antiga e nunca chamar, tudo segue funcionando.
+  if (req.method === 'POST' && req.url === '/taxa') {
+    let corpo = '';
+    req.on('data', (c) => {
+      corpo += c;
+      if (corpo.length > 2048) { req.destroy(); }   // limite de sanidade
+    });
+    req.on('end', () => {
+      try {
+        const o = JSON.parse(corpo);
+        const n = Number(o.hashrate);
+        if (isFinite(n) && n >= 0) {
+          taxaCelular = n;
+          taxaCelularEm = Date.now();
+          log('taxa do celular: ' + Math.round(n) + ' H/s' +
+              (o.motor ? ' (' + String(o.motor).slice(0, 20) + ')' : ''));
+        }
+      } catch (e) { /* corpo invalido: ignora, nao derruba nada */ }
+      res.writeHead(204); res.end();
+    });
+    return;
+  }
+
   if (req.url === '/' || req.url === '/index.html' || req.url === '/miner.html') {
     fs.readFile(MINER_HTML_PATH, (err, data) => {
       if (err) { res.writeHead(500); res.end('miner.html nao encontrado ao lado deste script.'); return; }
@@ -252,6 +283,7 @@ wss.on('connection', (ws) => {
     if (ws.readyState === ws.OPEN) ws.close();
   });
   ws.on('close', () => {
+    taxaCelular = 0; taxaCelularEm = 0;
     log(`celular desconectou (aceitos ${aceitos}, rejeitados ${rejeitados})`);
     tcp.destroy();
   });
