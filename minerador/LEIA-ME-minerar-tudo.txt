@@ -1,0 +1,81 @@
+MINERAR NOS DOIS AO MESMO TEMPO
+===============================
+
+O que mudou
+-----------
+Antes eram duas janelas e dois comandos: um para o proxy do celular, outro
+para o minerador do PC. Agora um comando so liga os dois, e o painel mostra
+a soma das duas forcas.
+
+Arquivos necessarios, todos na mesma pasta (C:\solo-miner)
+----------------------------------------------------------
+  minerar-tudo.js        <- o novo lancador
+  minerar-tudo.bat       <- atalho de clique duplo
+  miner-pc.js            <- minerador do notebook (ja existia)
+  stratum-ws-proxy.js    <- ponte para o celular (ja existia)
+  miner.html             <- pagina que o celular abre (ja existia)
+  node_modules\          <- a biblioteca ws (ja existia)
+
+Como usar
+---------
+1. Abra minerar-tudo.bat e confira a linha do BTC_USER.
+   O endereco vai SEM sufixo - o programa acrescenta .pc e .cel sozinho.
+
+2. De dois cliques em minerar-tudo.bat.
+
+3. A tela mostra os IPs do computador. Anote o que comeca com 192.168
+   (ou 10., conforme a rede).
+
+4. No celular, na mesma rede Wi-Fi, abra no navegador:
+       http://SEU_IP:8081/
+
+5. Na pagina, preencha:
+       endereco do proxy : ws://SEU_IP:8081/ws
+       endereco Bitcoin  : o mesmo que aparece na tela, terminado em .cel
+
+6. Clique em iniciar no celular.
+
+O painel
+--------
+  TOTAL 12.4 MH/s  |  PC 9.2 MH/s  |  CEL ~3.2 MH/s  |  shares 14  |  2.3h
+
+  TOTAL   soma das duas frentes
+  PC      medida exata, informada pelo proprio minerador
+  CEL     ESTIMATIVA, calculada pelos shares aceitos. Comeca em "ligado" e
+          vira um numero depois de alguns shares. Oscila bastante no inicio -
+          e normal, porque e estatistica, nao medicao.
+  shares  soma dos aceitos nas duas frentes
+  BLOCOS  so aparece se acontecer. Se aparecer, a janela apita dez vezes.
+
+Por que dois nomes de trabalhador
+---------------------------------
+PC e celular aparecem no pool como .pc e .cel, sob o MESMO endereco. Sao duas
+conexoes Stratum separadas - e assim que deve ser. O pagamento e unico, no
+endereco; os nomes servem para voce ver quanto cada um rendeu.
+
+Para parar
+----------
+Ctrl+C na janela. Encerra os dois e avisa quando terminar.
+
+Se nao abrir no celular
+-----------------------
+- Confira se o celular esta na MESMA rede Wi-Fi do computador.
+- Teste no proprio PC: http://localhost:8081/ deve abrir.
+  Se abre no PC e nao no celular, e o firewall do Windows bloqueando a
+  porta 8081, ou a rede tem isolamento entre aparelhos (comum em Wi-Fi de
+  local publico, hotel ou empresa).
+- O IP da rede local muda de tempos em tempos. Use sempre o que a tela
+  mostrou NESTA execucao.
+
+Se aparecer "address already in use"
+------------------------------------
+Sobrou um processo de uma tentativa anterior. No PowerShell:
+    taskkill /IM node.exe /F
+E rode de novo.
+
+Uma palavra honesta
+-------------------
+Somar as duas forcas aumenta a chance de achar um bloco, mas o aumento e
+proporcional: dobrar a taxa dobra uma probabilidade que continua
+pequenissima. O valor deste projeto esta no que voce construiu e aprendeu,
+nao no premio.

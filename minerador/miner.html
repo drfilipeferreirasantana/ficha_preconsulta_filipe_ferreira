@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Solo Miner Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#0b0e13; --surface:#12161d; --surface2:#181d26; --border:#232a35;
+    --text:#e7ebf1; --muted:#8b96a5; --accent:#f7931a; --accent-dim:#7a4c11;
+    --good:#1fc98a; --bad:#ff5c5c; --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding:16px;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));padding-top:calc(16px + env(safe-area-inset-top,0px));}
+  .wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
+  h1{font-size:19px;margin:0;letter-spacing:.2px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin:0 0 2px;}
+  .sub{color:var(--muted);font-size:13px;margin:0;line-height:1.5;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .status-pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);}
+  .status-pill.engine{color:var(--accent);border-color:var(--accent-dim);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.on{background:var(--good);box-shadow:0 0 6px var(--good);}
+  .dot.err{background:var(--bad);box-shadow:0 0 6px var(--bad);}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+  .stat .label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-family:var(--mono);}
+  .stat .value{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px;}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-family:var(--mono);}
+  input[type=text],input[type=number]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:9px 10px;font-family:var(--mono);font-size:13px;}
+  input:focus{outline:1px solid var(--accent);}
+  .field{margin-bottom:10px;}
+  button{font-family:var(--sans);font-weight:600;font-size:14px;border-radius:8px;border:1px solid transparent;padding:11px 16px;cursor:pointer;}
+  .btn-primary{background:var(--accent);color:#1a1204;}
+  .btn-primary:disabled{background:var(--accent-dim);color:#5b430f;cursor:not-allowed;}
+  .btn-stop{background:transparent;border-color:var(--bad);color:var(--bad);}
+  .btn-stop:disabled{opacity:.4;cursor:not-allowed;}
+  .log{background:#080a0e;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11px;line-height:1.6;height:150px;overflow-y:auto;color:#9fb0c3;}
+  .log .l-err{color:var(--bad);}
+  .log .l-ok{color:var(--good);}
+  .log .l-warn{color:var(--accent);}
+  .log .l-block{color:#1a1204;background:var(--accent);font-weight:700;display:block;padding:3px 6px;border-radius:4px;margin:2px 0;}
+  details summary{cursor:pointer;font-size:13px;color:var(--muted);font-weight:600;}
+  .warn-box{background:#221306;border:1px solid #4a2a0c;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:#e7c79a;}
+  .warn-box b{color:var(--accent);}
+  a{color:var(--accent);}
+  code{background:var(--surface2);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:.92em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="eyebrow">Bitcoin &middot; Stratum V1 &middot; SHA-256d</p>
+    <h1>Solo Miner Console</h1>
+    <p class="sub">Minerador real (n&atilde;o &eacute; simula&ccedil;&atilde;o): hashing SHA-256 duplo do protocolo Bitcoin, rodando no seu celular, submetendo shares via proxy Stratum.</p>
+  </div>
+
+  <div class="warn-box">
+    <b>Realidade estat&iacute;stica:</b> mesmo otimizado, o hashrate de um celular contra a dificuldade da rede (casa dos <b>10<sup>14</sup></b>) torna a chance de achar um bloco sozinho praticamente zero. O campo "tempo m&eacute;dio p/ bloco" mostra isso em n&uacute;meros. &Eacute; minera&ccedil;&atilde;o solo de verdade &mdash; s&oacute; que estatisticamente invi&aacute;vel em pequena escala.
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span class="status-pill"><span class="dot" id="dot"></span><span id="statusText">desconectado</span></span>
+      <span class="status-pill" id="threadsPill">0 threads</span>
+      <span class="status-pill engine" id="enginePill">motor: --</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Hashrate</div><div class="value" id="hashrate">0 H/s</div></div>
+      <div class="stat"><div class="label">Shares aceitos</div><div class="value" id="shares">0</div></div>
+      <div class="stat"><div class="label">Dificuldade rede</div><div class="value" id="netDiff">--</div></div>
+      <div class="stat"><div class="label">Tempo m&eacute;dio p/ bloco</div><div class="value" id="eta">--</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>Endere&ccedil;o do proxy Stratum/WebSocket (ws:// ou wss://)</label>
+      <input type="text" id="proxyUrl" placeholder="ws://192.168.15.8:8081/ws">
+    </div>
+    <div class="field">
+      <label>Usu&aacute;rio Stratum (endere&ccedil;o BTC ou carteira.worker)</label>
+      <input type="text" id="btcUser" placeholder="bc1q...xyz.celular">
+    </div>
+    <div class="field">
+      <label>Threads (n&uacute;cleos usados)</label>
+      <input type="number" id="threads" min="1" max="16" value="4">
+    </div>
+    <div class="field">
+      <label>Dificuldade a sugerir ao pool (0 = deixar o pool decidir)</label>
+      <input type="text" id="sugDiff" value="0.05">
+    </div>
+    <div class="row">
+      <button class="btn-primary" id="startBtn" style="flex:1">Iniciar minera&ccedil;&atilde;o</button>
+      <button class="btn-stop" id="stopBtn" style="flex:1" disabled>Parar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <details open>
+      <summary>Log</summary>
+      <div class="log" id="log" style="margin-top:8px;"></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Como funciona / otimiza&ccedil;&otilde;es aplicadas</summary>
+      <div class="sub" style="margin-top:8px;">
+        <p><b>Midstate:</b> os primeiros 64 bytes do cabe&ccedil;alho (vers&atilde;o, hash anterior, in&iacute;cio da merkle root) n&atilde;o mudam quando o nonce muda. Eles s&atilde;o comprimidos <b>uma vez por job</b> em vez de a cada tentativa &mdash; isso elimina 1 das 3 compress&otilde;es SHA-256 por hash.</p>
+        <p><b>Zero aloca&ccedil;&atilde;o:</b> todos os buffers (cabe&ccedil;alho, estado, agenda de mensagens) s&atilde;o criados uma vez e reaproveitados. A vers&atilde;o anterior criava ~12 objetos por tentativa, sufocando o coletor de lixo.</p>
+        <p><b>Rejei&ccedil;&atilde;o r&aacute;pida:</b> a palavra mais significativa do hash descarta 99,99% dos candidatos com uma &uacute;nica compara&ccedil;&atilde;o de inteiro, sem montar nem inverter o hash de 32 bytes.</p>
+        <p><b>WebAssembly:</b> o mesmo algoritmo compilado de C para WASM, com volta autom&aacute;tica para JavaScript se o navegador n&atilde;o suportar. O indicador "motor" no topo mostra qual est&aacute; ativo.</p>
+        <p>Navegadores n&atilde;o abrem conex&atilde;o TCP bruta, por isso a p&aacute;gina fala com o proxy Stratum/WebSocket (Node.js) que roda no seu PC.</p>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const logEl = document.getElementById('log');
+function log(msg, cls){
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = '[' + new Date().toLocaleTimeString('pt-BR') + '] ' + msg;
+  logEl.appendChild(d);
+  while(logEl.childNodes.length > 300) logEl.removeChild(logEl.firstChild);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function hexToBytes(hex){
+  const b = new Uint8Array(hex.length/2);
+  for(let i=0;i<b.length;i++) b[i] = parseInt(hex.substr(i*2,2),16);
+  return b;
+}
+function bytesToHex(b){
+  let s = '';
+  for(let i=0;i<b.length;i++) s += b[i].toString(16).padStart(2,'0');
+  return s;
+}
+function swapEndian32(hex){
+  const bytes = hexToBytes(hex);
+  const out = new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i+=4){
+    out[i]=bytes[i+3]; out[i+1]=bytes[i+2]; out[i+2]=bytes[i+1]; out[i+3]=bytes[i];
+  }
+  return bytesToHex(out);
+}
+function concatBytes(a, b){
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0); out.set(b, a.length);
+  return out;
+}
+
+const workerSrc = `
+"use strict";
+// ===== Núcleo de mineração: WASM quando disponível, JS otimizado como reserva =====
+// Ambos usam midstate (o 1o bloco de 64 bytes do cabeçalho não depende do nonce,
+// então é comprimido 1x por job em vez de a cada tentativa) e zero alocação no laço.
+
+const WASM_SIMD_B64 = [
+"AGFzbQEAAAABEgRgAAF/YAAAYAJ/fwF/YAF/AAMIBwAAAAABAgMEBQFwAQEBBQMBAAIGCAF/AUHglQQLB04IBm1lbW9yeQIAB2hkcl9wdHIAAA",
+"hzdGd0X3B0cgABCG50Z3RfcHRyAAIHb3V0X3B0cgADB3ByZXBhcmUABARzY2FuAAUGZGlnZXN0AAYKwkEHCABBgIqAgAALCABB0IqAgAALCABB",
+"8IqAgAALCABBkIuAgAAL8woBDH9BAEEAKAKAioCAACIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZyciIBNgKwi4CAAEEAQQAoAoSKgI",
+"AAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgK0i4CAAEEAQQAoAoiKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEY",
+"dnJyNgK4i4CAAEEAQQAoAoyKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgK8i4CAAEEAQQAoApCKgIAAIgBBGHQgAEGA/g",
+"NxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLAi4CAAEEAQQAoApSKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLEi4CAAEEA",
+"QQAoApiKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLIi4CAAEEAQQAoApyKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QY",
+"D+A3EgAEEYdnJyNgLMi4CAAEEAQQAoAqCKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLQi4CAAEEAQQAoAqSKgIAAIgBB",
+"GHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLUi4CAAEEAQQAoAqiKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNg",
+"LYi4CAAEEAQQAoAqyKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLci4CAAEEAQQAoArCKgIAAIgBBGHQgAEGA/gNxQQh0",
+"ciAAQQh2QYD+A3EgAEEYdnJyNgLgi4CAAEEAQQAoArSKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLki4CAAEEAQQAoAr",
+"iKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLoi4CAAEEAQQAoAryKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3Eg",
+"AEEYdnJyNgLsi4CAAEHAfiEAA0AgAEGwjYCAAGogAEGUjYCAAGooAgAgAWogAEH0jICAAGooAgAiAUEZdyABQQ53cyABQQN2c2ogAEGojYCAAG",
+"ooAgAiAkEPdyACQQ13cyACQQp2c2o2AgAgASEBIABBBGoiAA0AC0GM0ZXYeSEAQauzj/wBIQNBmZqD3wUhBEH/pLmIBSEFQbrqv6p6IQZB8ua7",
+"4wMhB0GF3Z7beyEBQefMp9AGIQhBgH4hAgNAIAAhCSAHIgogASIHcyAIIgFxIAogB3FzIAFBHncgAUETd3MgAUEKd3NqIAUiAEEadyAAQRV3cy",
+"AAQQd3cyAEaiADIgsgAEF/c3FqIAkgAHFqIAJBgIqAgABqKAIAaiACQbCNgIAAaigCAGoiBWohCCAFIAZqIQUgCiEGIAshBCAJIQMgAkEEaiIC",
+"DQALQQAgBf0RIAD9HAEgCf0cAiAL/RwD/Qx/Ug5RjGgFm6vZgx8ZzeBb/a4B/QsEwI2AgABBACAI/REgAf0cASAH/RwCIAr9HAP9DGfmCWqFrm",
+"e7cvNuPDr1T6X9rgH9CwSwjYCAAEEAQQAoAsCKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLQjYCAAEEAQQAoAsSKgIAA",
+"IgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgLUjYCAAEEAQQAoAsiKgIAAIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdn",
+"JyNgLYjYCAAAvXJAkDfwl7B38DewF/AnsBfwp7Cn9BACECAkACQAJAIAFBBEkNACABQQJ2IQNBACgC0IqAgAAhBEEA/QAEwI2AgAAiBSAF/Q0M",
+"DQ4PDA0ODwwNDg8MDQ4PIQYgBSAF/Q0ICQoLCAkKCwgJCgsICQoLIQcgBSAF/Q0EBQYHBAUGBwQFBgcEBQYHIQggBSAF/Q0AAQIDAAECAwABAg",
+"MAAQIDIQlBAP0AAryNgIAAIAX9DQABAgMAAQIDAAECAwABAgMhCkEA/QADuI2AgAAgBf0NAAECAwABAgMAAQIDAAECAyELQQD9AAK0jYCAACAF",
+"/Q0AAQIDAAECAwABAgMAAQIDIQxBAP0ABLCNgIAAIAX9DQABAgMAAQIDAAECAwABAgMhDUEAKALsioCAACEOQQAoAuiKgIAAIQ9BACgC5IqAgA",
+"AhEEEAKALgioCAACERQQAoAtyKgIAAIRJBACgC2IqAgAAhE0EAKALUioCAACEUQQD9CQLYjYCAACEVQQD9CQLUjYCAACEWQQD9CQLQjYCAACEX",
+"QQAhGANAQQD9DIACAACAAgAAgAIAAIACAAD9CwTQj4CAAEEA/QwAAAAAAAAAAAAAAAAAAAAAIhn9CwTAj4CAAEEAIBn9CwSwj4CAAEEAIBn9Cw",
+"Sgj4CAAEEAIBn9CwSQj4CAAEEAIBn9CwSAj4CAAEEAIBn9CwTwjoCAAEEAIBn9CwTgjoCAAEEAIBn9CwTQjoCAAEEAIBn9CwTAjoCAAEEAIBn9",
+"CwSwjoCAAEEA/QwAAACAAAAAgAAAAIAAAACAIhr9CwSgjoCAAEEAIBX9CwSAjoCAAEEAIBb9CwTwjYCAAEEAIBf9CwTgjYCAAEEAIBhBAnQgAG",
+"oiG0EYdCAbQYD+A3FBCHRyIBtBCHZBgP4DcSAbQRh2cnL9ESAbQQFqIgFBGHQgAUGA/gNxQQh0ciABQQh2QYD+A3EgAUEYdnJy/RwBIBtBAmoi",
+"AUEYdCABQYD+A3FBCHRyIAFBCHZBgP4DcSABQRh2cnL9HAIgG0EDaiIBQRh0IAFBgP4DcUEIdHIgAUEIdkGA/gNxIAFBGHZycv0cA/0LBJCOgI",
+"AAQYB6IQEgFyEFA0AgAUHglYCAAGogAUHwlICAAGr9AAQAIAX9rgEgAUHwk4CAAGr9AAQAIgVBGf2rASAFQQf9rQH9UCAFQQ79qwEgBUES/a0B",
+"/VD9USAFQQP9rQH9Uf2uASABQcCVgIAAav0ABAAiHEEP/asBIBxBEf2tAf1QIBxBDf2rASAcQRP9rQH9UP1RIBxBCv2tAf1R/a4B/QsEACAFIQ",
+"UgAUEQaiIBDQALQYB+IQFB4I2AgAAhAiANIR0gDCEcIAshHiAKIR8gCSEgIAYhISAHISIgCCEFA0AgBSEjIB4iJCAcIh79USAdIhz9TiAkIB79",
+"Tv1RIBxBHv2rASAcQQL9rQH9UCAcQRP9qwEgHEEN/a0B/VD9USAcQQr9qwEgHEEW/a0B/VD9Uf2uASAgIgVBGv2rASAFQQb9rQH9UCAFQRX9qw",
+"EgBUEL/a0B/VD9USAFQQf9qwEgBUEZ/a0B/VD9USAh/a4BICIiJSAF/U/9rgEgIyAF/U79rgEgAv0ABAD9rgEgAUGAioCAAGr9CQIA/a4BIiD9",
+"rgEhHSAgIB/9rgEhICACQRBqIQIgJCEfICUhISAjISIgAUEEaiIBDQALQQD9DAABAAAAAQAAAAEAAAABAAD9CwTQj4CAAEEAIBn9CwTAj4CAAE",
+"EAIBn9CwSwj4CAAEEAIBn9CwSgj4CAAEEAIBn9CwSQj4CAAEEAIBn9CwSAj4CAAEEAIBn9CwTwjoCAAEEAIBr9CwTgjoCAAEEAICUgBv2uAf0L",
+"BNCOgIAAQQAgIyAH/a4B/QsEwI6AgABBACAFIAj9rgH9CwSwjoCAAEEAICAgCf2uAf0LBKCOgIAAQQAgJCAK/a4B/QsEkI6AgABBACAeIAv9rg",
+"H9CwSAjoCAAEEAIBwgDP2uAf0LBPCNgIAAQQAgHSAN/a4BIgX9CwTgjYCAAEGAeiEBA0AgAUHglYCAAGogAUHwlICAAGr9AAQAIAX9rgEgAUHw",
+"k4CAAGr9AAQAIgVBGf2rASAFQQf9rQH9UCAFQQ79qwEgBUES/a0B/VD9USAFQQP9rQH9Uf2uASABQcCVgIAAav0ABAAiHEEP/asBIBxBEf2tAf",
+"1QIBxBDf2rASAcQRP9rQH9UP1RIBxBCv2tAf1R/a4B/QsEACAFIQUgAUEQaiIBDQAL/QyMaAWbjGgFm4xoBZuMaAWbIQX9DKvZgx+r2YMfq9mD",
+"H6vZgx8hH/0MGc3gWxnN4FsZzeBbGc3gWyEh/Qx/Ug5Rf1IOUX9SDlF/Ug5RIR39DDr1T6U69U+lOvVPpTr1T6UhIv0McvNuPHLzbjxy8248cv",
+"NuPCEe/QyFrme7ha5nu4WuZ7uFrme7IRz9DGfmCWpn5glqZ+YJamfmCWohIEGAfiEBQeCNgIAAIQIDQCAFISMgHiIkIBwiHv1RICAiHP1OICQg",
+"Hv1O/VEgHEEe/asBIBxBAv2tAf1QIBxBE/2rASAcQQ39rQH9UP1RIBxBCv2rASAcQRb9rQH9UP1R/a4BIB0iBUEa/asBIAVBBv2tAf1QIAVBFf",
+"2rASAFQQv9rQH9UP1RIAVBB/2rASAFQRn9rQH9UP1RICH9rgEgHyIlIAX9T/2uASAjIAX9Tv2uASAC/QAEAP2uASABQYCKgIAAav0JAgD9rgEi",
+"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",
+"BBACAB/QsEoI+AgABBACAB/QsEkI+AgABBACAB/QsEgI+AgABBACAB/QsE8I6AgABBACAB/QsE4I6AgABBACAB/QsE0I6AgABBACAB/QsEwI6A",
+"gABBACAB/QsEsI6AgABBAP0MAAAAgAAAAIAAAACAAAAAgCIC/QsEoI6AgABBAEEA/QkC0I2AgAAiA/0LBOCNgIAAQQBBAP0JAtSNgIAA/QsE8I",
+"2AgABBAEEA/QkC2I2AgAD9CwSAjoCAAEEAIABBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJy/RH9CwSQjoCAAEEA/QAEwI2AgAAiBCAD",
+"/Q0MDQ4PDA0ODwwNDg8MDQ4PIQUgBCAD/Q0ICQoLCAkKCwgJCgsICQoLIQYgBCAD/Q0EBQYHBAUGBwQFBgcEBQYHIQcgBCAD/Q0AAQIDAAECAw",
+"ABAgMAAQIDIQhBAP0AAryNgIAAIAP9DQABAgMAAQIDAAECAwABAgMhCUEA/QADuI2AgAAgA/0NAAECAwABAgMAAQIDAAECAyEKQQD9AAK0jYCA",
+"ACAD/Q0AAQIDAAECAwABAgMAAQIDIQtBAP0ABLCNgIAAIAP9DQABAgMAAQIDAAECAwABAgMhDEGAeiEAA0AgAEHglYCAAGogAEHwlICAAGr9AA",
+"QAIAP9rgEgAEHwk4CAAGr9AAQAIgNBGf2rASADQQf9rQH9UCADQQ79qwEgA0ES/a0B/VD9USADQQP9rQH9Uf2uASAAQcCVgIAAav0ABAAiBEEP",
+"/asBIARBEf2tAf1QIARBDf2rASAEQRP9rQH9UP1RIARBCv2tAf1R/a4B/QsEACADIQMgAEEQaiIADQALQYB+IQBB4I2AgAAhDSAMIQ4gCyEEIA",
+"ohDyAJIRAgCCERIAUhEiAGIRMgByEDA0AgAyEUIA8iFSAEIg/9USAOIgT9TiAVIA/9Tv1RIARBHv2rASAEQQL9rQH9UCAEQRP9qwEgBEEN/a0B",
+"/VD9USAEQQr9qwEgBEEW/a0B/VD9Uf2uASARIgNBGv2rASADQQb9rQH9UCADQRX9qwEgA0EL/a0B/VD9USADQQf9qwEgA0EZ/a0B/VD9USAS/a",
+"4BIBMiFiAD/U/9rgEgFCAD/U79rgEgDf0ABAD9rgEgAEGAioCAAGr9CQIA/a4BIhH9rgEhDiARIBD9rgEhESANQRBqIQ0gFSEQIBYhEiAUIRMg",
+"AEEEaiIADQALQQD9DAABAAAAAQAAAAEAAAABAAD9CwTQj4CAAEEAIAH9CwTAj4CAAEEAIAH9CwSwj4CAAEEAIAH9CwSgj4CAAEEAIAH9CwSQj4",
+"CAAEEAIAH9CwSAj4CAAEEAIAH9CwTwjoCAAEEAIAL9CwTgjoCAAEEAIBYgBf2uAf0LBNCOgIAAQQAgFCAG/a4B/QsEwI6AgABBACADIAf9rgH9",
+"CwSwjoCAAEEAIBEgCP2uAf0LBKCOgIAAQQAgFSAJ/a4B/QsEkI6AgABBACAPIAr9rgH9CwSAjoCAAEEAIAQgC/2uAf0LBPCNgIAAQQAgDiAM/a",
+"4BIgP9CwTgjYCAAEGAeiEAA0AgAEHglYCAAGogAEHwlICAAGr9AAQAIAP9rgEgAEHwk4CAAGr9AAQAIgNBGf2rASADQQf9rQH9UCADQQ79qwEg",
+"A0ES/a0B/VD9USADQQP9rQH9Uf2uASAAQcCVgIAAav0ABAAiBEEP/asBIARBEf2tAf1QIARBDf2rASAEQRP9rQH9UP1RIARBCv2tAf1R/a4B/Q",
+"sEACADIQMgAEEQaiIADQAL/QyMaAWbjGgFm4xoBZuMaAWbIQP9DKvZgx+r2YMfq9mDH6vZgx8hEP0MGc3gWxnN4FsZzeBbGc3gWyES/Qx/Ug5R",
+"f1IOUX9SDlF/Ug5RIQ79DDr1T6U69U+lOvVPpTr1T6UhE/0McvNuPHLzbjxy8248cvNuPCEP/QyFrme7ha5nu4WuZ7uFrme7IQT9DGfmCWpn5g",
+"lqZ+YJamfmCWohEUGAfiEAQeCNgIAAIQ0DQCADIRQgDyIVIAQiD/1RIBEiBP1OIBUgD/1O/VEgBEEe/asBIARBAv2tAf1QIARBE/2rASAEQQ39",
+"rQH9UP1RIARBCv2rASAEQRb9rQH9UP1R/a4BIA4iA0Ea/asBIANBBv2tAf1QIANBFf2rASADQQv9rQH9UP1RIANBB/2rASADQRn9rQH9UP1RIB",
+"L9rgEgECIWIAP9T/2uASAUIAP9Tv2uASAN/QAEAP2uASAAQYCKgIAAav0JAgD9rgEiDv2uASERIA4gE/2uASEOIA1BEGohDSAVIRMgFiESIBQh",
+"ECAAQQRqIgANAAtBACAW/RsAQZmag98FaiIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCrIuAgABBACAU/RsAQauzj/wBaiIAQR",
+"h0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCqIuAgABBACAD/RsAQYzRldh5aiIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZy",
+"cjYCpIuAgABBACAO/RsAQf+kuYgFaiIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCoIuAgABBACAV/RsAQbrqv6p6aiIAQRh0IA",
+"BBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCnIuAgABBACAP/RsAQfLmu+MDaiIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYC",
+"mIuAgABBACAE/RsAQYXdntt7aiIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYClIuAgABBACAR/RsAQefMp9AGaiIAQRh0IABBgP",
+"4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCkIuAgAALC4gCAQBBgAgLgAKYL4pCkUQ3cc/7wLWl27XpW8JWOfER8Vmkgj+S1V4cq5iqB9gBW4MS",
+"voUxJMN9DFV0Xb5y/rHegKcG3Jt08ZvBwWmb5IZHvu/GncEPzKEMJG8s6S2qhHRK3KmwXNqI+XZSUT6YbcYxqMgnA7DHf1m/8wvgxkeRp9VRY8",
+"oGZykpFIUKtyc4IRsu/G0sTRMNOFNUcwpluwpqdi7JwoGFLHKSoei/oktmGqhwi0vCo1FsxxnoktEkBpnWhTUO9HCgahAWwaQZCGw3Hkx3SCe1",
+"vLA0swwcOUqq2E5Pypxb828uaO6Cj3RvY6V4FHjIhAgCx4z6/76Q62xQpPej+b7yeHHGAHMEbmFtZQAMC21pbmVyNC53YXNtAT4HAAdoZHJfcH",
+"RyAQhzdGd0X3B0cgIIbnRndF9wdHIDB291dF9wdHIEB3ByZXBhcmUFBHNjYW4GBmRpZ2VzdAcSAQAPX19zdGFja19wb2ludGVyCQoBAAcucm9k",
+"YXRhADgJcHJvZHVjZXJzAQxwcm9jZXNzZWQtYnkBDFVidW50dSBjbGFuZxExOC4xLjMgKDF1YnVudHUxKQA1D3RhcmdldF9mZWF0dXJlcwMrD2",
+"11dGFibGUtZ2xvYmFscysIc2lnbi1leHQrB3NpbWQxMjg="
+].join("");
+
+const WASM_B64 = [
+"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",
+"IAFBACgCyI2AgAA2AjggAUEAKALMjYCAADYCPCABQSBqEIWAgIAAQQBCgICAgIAgNwPoi4CAAEEAQgA3A+CLgIAAQQBCADcD2IuAgABBAEKAgI",
+"CACDcD0IuAgABBACABKQMgNwOwi4CAAEEAIAEpAyg3A7iLgIAAQQAgASkDMDcDwIuAgABBACABKQM4NwPIi4CAACABQufMp9DW0Ouzu383AwAg",
+"AULy5rvjo6f9p6V/NwMIIAFC/6S5iMWR2oKbfzcDECABQquzj/yRo7Pw2wA3AxggARCFgICAAEEAIAEoAgAiAEEYdCAAQYD+A3FBCHRyIABBCH",
+"ZBgP4DcSAAQRh2cnI2ApCLgIAAQQAgASgCBCIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYClIuAgABBACABKAIIIgBBGHQgAEGA",
+"/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJyNgKYi4CAAEEAIAEoAgwiAEEYdCAAQYD+A3FBCHRyIABBCHZBgP4DcSAAQRh2cnI2ApyLgIAAQQAgAS",
+"gCECIAQRh0IABBgP4DcUEIdHIgAEEIdkGA/gNxIABBGHZycjYCoIuAgABBACABKAIUIgBBGHQgAEGA/gNxQQh0ciAAQQh2QYD+A3EgAEEYdnJy",
+"NgKki4CAAEEAIAEoAhgiAEEYdCAAQYD+A3FBCHRyIABBCHZBgP4DcSAAQRh2cnI2AqiLgIAAQQAgASgCHCIAQRh0IABBgP4DcUEIdHIgAEEIdk",
+"GA/gNxIABBGHZycjYCrIuAgAAgAUHAAGokgICAgAALC4gCAQBBgAgLgAKYL4pCkUQ3cc/7wLWl27XpW8JWOfER8Vmkgj+S1V4cq5iqB9gBW4MS",
+"voUxJMN9DFV0Xb5y/rHegKcG3Jt08ZvBwWmb5IZHvu/GncEPzKEMJG8s6S2qhHRK3KmwXNqI+XZSUT6YbcYxqMgnA7DHf1m/8wvgxkeRp9VRY8",
+"oGZykpFIUKtyc4IRsu/G0sTRMNOFNUcwpluwpqdi7JwoGFLHKSoei/oktmGqhwi0vCo1FsxxnoktEkBpnWhTUO9HCgahAWwaQZCGw3Hkx3SCe1",
+"vLA0swwcOUqq2E5Pypxb828uaO6Cj3RvY6V4FHjIhAgCx4z6/76Q62xQpPej+b7yeHHGAHwEbmFtZQALCm1pbmVyLndhc20BSAgAB2hkcl9wdH",
+"IBCHN0Z3RfcHRyAghudGd0X3B0cgMHb3V0X3B0cgQHcHJlcGFyZQUIY29tcHJlc3MGBHNjYW4HBmRpZ2VzdAcSAQAPX19zdGFja19wb2ludGVy",
+"CQoBAAcucm9kYXRhADgJcHJvZHVjZXJzAQxwcm9jZXNzZWQtYnkBDFVidW50dSBjbGFuZxExOC4xLjMgKDF1YnVudHUxKQAsD3RhcmdldF9mZW",
+"F0dXJlcwIrD211dGFibGUtZ2xvYmFscysIc2lnbi1leHQ="
+].join("");
+
+const K = new Uint32Array([
+0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+const IV = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+
+const W = new Uint32Array(64);
+const MID = new Uint32Array(8);
+const ST1 = new Uint32Array(8);
+const ST2 = new Uint32Array(8);
+const TAIL = new Uint32Array(3);
+
+function bswap(x){ return (((x>>>24)|((x>>>8)&0xff00)|((x<<8)&0xff0000)|(x<<24))>>>0); }
+
+function compress(st){
+  for(let i=16;i<64;i++){
+    const x=W[i-15], y=W[i-2];
+    const s0 = ((x>>>7)|(x<<25)) ^ ((x>>>18)|(x<<14)) ^ (x>>>3);
+    const s1 = ((y>>>17)|(y<<15)) ^ ((y>>>19)|(y<<13)) ^ (y>>>10);
+    W[i] = (W[i-16]+s0+W[i-7]+s1)>>>0;
+  }
+  let a=st[0],b=st[1],c=st[2],d=st[3],e=st[4],f=st[5],g=st[6],h=st[7];
+  for(let i=0;i<64;i++){
+    const S1 = ((e>>>6)|(e<<26)) ^ ((e>>>11)|(e<<21)) ^ ((e>>>25)|(e<<7));
+    const ch = (e&f) ^ (~e&g);
+    const t1 = (h+S1+ch+K[i]+W[i])>>>0;
+    const S0 = ((a>>>2)|(a<<30)) ^ ((a>>>13)|(a<<19)) ^ ((a>>>22)|(a<<10));
+    const maj = (a&b)^(a&c)^(b&c);
+    const t2 = (S0+maj)>>>0;
+    h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+  }
+  st[0]=(st[0]+a)>>>0; st[1]=(st[1]+b)>>>0; st[2]=(st[2]+c)>>>0; st[3]=(st[3]+d)>>>0;
+  st[4]=(st[4]+e)>>>0; st[5]=(st[5]+f)>>>0; st[6]=(st[6]+g)>>>0; st[7]=(st[7]+h)>>>0;
+}
+
+function jsPrepare(prefix76){
+  const dv = new DataView(prefix76.buffer, prefix76.byteOffset, 76);
+  for(let i=0;i<16;i++) W[i] = dv.getUint32(i*4);
+  MID.set(IV);
+  compress(MID);
+  TAIL[0]=dv.getUint32(64); TAIL[1]=dv.getUint32(68); TAIL[2]=dv.getUint32(72);
+}
+
+// Varre nonces; devolve o nonce achado ou -1
+function jsScan(start, count, stgt, ntgt, outIsBlock){
+  const t0 = stgt[0];
+  for(let k=0;k<count;k++){
+    const nonce = (start + k)>>>0;
+    W[0]=TAIL[0]; W[1]=TAIL[1]; W[2]=TAIL[2]; W[3]=bswap(nonce);
+    W[4]=0x80000000; W[5]=0; W[6]=0; W[7]=0; W[8]=0; W[9]=0; W[10]=0;
+    W[11]=0; W[12]=0; W[13]=0; W[14]=0; W[15]=640;
+    ST1.set(MID); compress(ST1);
+    W[0]=ST1[0]; W[1]=ST1[1]; W[2]=ST1[2]; W[3]=ST1[3];
+    W[4]=ST1[4]; W[5]=ST1[5]; W[6]=ST1[6]; W[7]=ST1[7];
+    W[8]=0x80000000; W[9]=0; W[10]=0; W[11]=0; W[12]=0; W[13]=0; W[14]=0; W[15]=256;
+    ST2.set(IV); compress(ST2);
+
+    if(bswap(ST2[7]) > t0) continue;   // rejeição rápida
+
+    let ok = true;
+    for(let i=0;i<8;i++){
+      const v = bswap(ST2[7-i]), t = stgt[i];
+      if(v < t) break;
+      if(v > t){ ok = false; break; }
+    }
+    if(!ok) continue;
+
+    let isBlock = 1;
+    for(let i=0;i<8;i++){
+      const v = bswap(ST2[7-i]), t = ntgt[i];
+      if(v < t) break;
+      if(v > t){ isBlock = 0; break; }
+    }
+    outIsBlock[0] = isBlock;
+    return nonce;
+  }
+  return -1;
+}
+
+// ---------- WASM ----------
+let wasm = null, wmem8 = null, wHdr = 0, wStgt = 0, wNtgt = 0, wOut = 0, wOutU32 = null;
+function tentarModulo(b64){
+  try{
+    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const mod = new WebAssembly.Module(bin);          // síncrono: ok dentro de Worker
+    const inst = new WebAssembly.Instance(mod, {});
+    const ex = inst.exports;
+    if(!ex.scan || !ex.prepare || !ex.memory) return false;
+    wasm = ex;
+    wmem8 = new Uint8Array(ex.memory.buffer);
+    wHdr = ex.hdr_ptr(); wStgt = ex.stgt_ptr(); wNtgt = ex.ntgt_ptr(); wOut = ex.out_ptr();
+    wOutU32 = new Uint32Array(ex.memory.buffer, wOut, 8);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+// tenta SIMD (4 hashes por instrucao) e cai para o escalar se o navegador nao suportar
+let MOTOR = 'JS';
+if(tentarModulo(WASM_SIMD_B64)) MOTOR = 'WASM-SIMD';
+else if(tentarModulo(WASM_B64)) MOTOR = 'WASM';
+const USE_WASM = (MOTOR !== 'JS');
+
+// ---------- estado do worker ----------
+let running = false;
+let nonceCursor = 0;
+let stgt = new Uint32Array(8);
+let ntgt = new Uint32Array(8);
+const outIsBlock = new Uint32Array(1);
+let hashes = 0;
+let batch = 40000;               // sempre multiplo de 4 (o scan SIMD anda de 4 em 4)               // ajustado dinamicamente para ~150ms por fatia
+let lastReport = 0;
+
+function applyShareTarget(t){
+  stgt.set(t);
+  if(USE_WASM) new Uint32Array(wasm.memory.buffer, wStgt, 8).set(t);
+}
+function applyNetworkTarget(t){
+  ntgt.set(t);
+  if(USE_WASM) new Uint32Array(wasm.memory.buffer, wNtgt, 8).set(t);
+}
+
+self.onmessage = (e)=>{
+  const m = e.data;
+  if(m.type === 'job'){
+    if(USE_WASM){
+      new Uint8Array(wasm.memory.buffer).set(m.headerPrefix, wHdr);
+      wasm.prepare();
+    } else {
+      jsPrepare(m.headerPrefix);
+    }
+    applyShareTarget(m.shareTarget);
+    applyNetworkTarget(m.networkTarget);
+    nonceCursor = m.nonceStart >>> 0;
+    hashes = 0;
+    lastReport = Date.now();
+    if(!running){ running = true; loop(); }
+  } else if(m.type === 'setShareTarget'){
+    applyShareTarget(m.shareTarget);
+  } else if(m.type === 'stop'){
+    running = false;
+  }
+};
+
+// avisa a tela qual motor esta ativo (em setTimeout p/ garantir que o handler ja existe)
+setTimeout(function(){ self.postMessage({type:'engine', wasm: USE_WASM, motor: MOTOR}); }, 0);
+
+function loop(){
+  if(!running) return;
+  const t0 = Date.now();
+
+  let found = -1;
+  if(USE_WASM){
+    if(wasm.scan(nonceCursor >>> 0, batch)){
+      found = wOutU32[0] >>> 0;
+      outIsBlock[0] = wOutU32[1];
+    }
+  } else {
+    found = jsScan(nonceCursor >>> 0, batch, stgt, ntgt, outIsBlock);
+  }
+
+  if(found >= 0){
+    self.postMessage({type:'found', nonce: found >>> 0, isBlock: !!outIsBlock[0]});
+    const done = ((found >>> 0) - (nonceCursor >>> 0) + 1) >>> 0;
+    hashes += done;
+    nonceCursor = (found + 1) >>> 0;
+  } else {
+    hashes += batch;
+    nonceCursor = (nonceCursor + batch) >>> 0;
+  }
+
+  // auto-ajuste da fatia para ~150ms (mantém o worker responsivo a parar/novo job)
+  const dt = Date.now() - t0;
+  if(dt > 0){
+    const alvo = Math.round(batch * (150 / dt));
+    batch = Math.max(10000, Math.min(4000000, alvo)) & ~3;
+  }
+
+  // relatório de progresso ~1x por segundo (em vez de a cada fatia)
+  const agora = Date.now();
+  if(agora - lastReport >= 1000){
+    self.postMessage({type:'progress', hashes, at: agora});
+    hashes = 0;               // envia o DELTA; a taxa é calculada na tela principal
+    lastReport = agora;
+  }
+
+  setTimeout(loop, 0);
+}
+
+`;
+
+// ---------- estado ----------
+let ws = null;
+let workers = [];
+let extranonce1 = null, extranonce2Size = 2;
+let currentJob = null;
+let msgId = 1;
+let sharesAccepted = 0;
+let running = false;
+let networkDifficulty = null;
+let poolDifficulty = 1;
+const pendingSubmissions = {};
+
+// hashrate medido como TAXA (delta de hashes / delta de tempo), nao como contador
+let hashAccum = 0;
+let lastRateAt = 0;
+let hashrateEma = 0;
+
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('statusText');
+const hashrateEl = document.getElementById('hashrate');
+const sharesEl = document.getElementById('shares');
+const netDiffEl = document.getElementById('netDiff');
+const etaEl = document.getElementById('eta');
+const threadsPill = document.getElementById('threadsPill');
+const enginePill = document.getElementById('enginePill');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+
+function setStatus(txt, kind){
+  statusText.textContent = txt;
+  dot.className = 'dot' + (kind==='on' ? ' on' : kind==='err' ? ' err' : '');
+}
+
+function fmtHashrate(hps){
+  if(hps>=1e9) return (hps/1e9).toFixed(2)+' GH/s';
+  if(hps>=1e6) return (hps/1e6).toFixed(2)+' MH/s';
+  if(hps>=1e3) return (hps/1e3).toFixed(2)+' kH/s';
+  return hps.toFixed(0)+' H/s';
+}
+
+// ---------- targets como 8 palavras de 32 bits, big-endian ----------
+function bitsToTargetWords(bitsHex){
+  const bytes = hexToBytes(bitsHex);
+  const exponent = bytes[0];
+  const mantissa = [ bytes[1], bytes[2], bytes[3] ];
+  const t = new Uint8Array(32);
+  const start = 32 - exponent;
+  for(let i=0;i<3;i++){
+    const pos = start + i;
+    if(pos>=0 && pos<32) t[pos] = mantissa[i];
+  }
+  const w = new Uint32Array(8);
+  for(let i=0;i<8;i++){
+    w[i] = ((t[i*4]<<24) | (t[i*4+1]<<16) | (t[i*4+2]<<8) | t[i*4+3]) >>> 0;
+  }
+  return w;
+}
+
+function difficultyToShareTargetWords(diff){
+  const diff1 = 0xFFFFn << 208n;            // target da dificuldade 1
+  // escala 1e6 para suportar dificuldade fracionaria (pools usam p/ mineradores lentos)
+  const escala = 1000000n;
+  const d = BigInt(Math.max(1, Math.round(diff * 1e6)));
+  let x = (diff1 * escala) / d;
+  const limite = (1n << 256n) - 1n;
+  if(x > limite) x = limite;
+  const w = new Uint32Array(8);
+  for(let i=7;i>=0;i--){
+    w[i] = Number(x & 0xffffffffn) >>> 0;
+    x >>= 32n;
+  }
+  return w;
+}
+
+async function fetchNetworkInfo(){
+  try{
+    const r = await fetch('https://mempool.space/api/v1/mining/hashrate/3d');
+    const j = await r.json();
+    networkDifficulty = j.currentDifficulty;
+    netDiffEl.textContent = networkDifficulty.toExponential(3);
+    updateEta();
+  }catch(err){
+    netDiffEl.textContent = 'offline';
+  }
+}
+
+function updateEta(){
+  if(!networkDifficulty || hashrateEma <= 0){ etaEl.textContent='--'; return; }
+  const segundos = (networkDifficulty * Math.pow(2,32)) / hashrateEma;
+  const anos = segundos / (3600*24*365);
+  etaEl.textContent = anos > 1e6 ? anos.toExponential(2)+' anos' : anos.toFixed(0)+' anos';
+}
+
+// ---------- SHA-256 (tela principal, so p/ montar a merkle root: poucos hashes por job) ----------
+const K_MAIN = new Uint32Array([
+0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+
+function sha256(msg){
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const l = msg.length;
+  const padLen = ((l+1+8+63)>>6)<<6;
+  const buf = new Uint8Array(padLen);
+  buf.set(msg); buf[l]=0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(padLen-8, Math.floor((l*8)/0x100000000));
+  dv.setUint32(padLen-4, (l*8)>>>0);
+  const w = new Uint32Array(64);
+  for(let off=0; off<padLen; off+=64){
+    for(let i=0;i<16;i++) w[i] = dv.getUint32(off+i*4);
+    for(let i=16;i<64;i++){
+      const x=w[i-15], y=w[i-2];
+      const s0 = ((x>>>7)|(x<<25)) ^ ((x>>>18)|(x<<14)) ^ (x>>>3);
+      const s1 = ((y>>>17)|(y<<15)) ^ ((y>>>19)|(y<<13)) ^ (y>>>10);
+      w[i] = (w[i-16]+s0+w[i-7]+s1)>>>0;
+    }
+    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(let i=0;i<64;i++){
+      const S1 = ((e>>>6)|(e<<26)) ^ ((e>>>11)|(e<<21)) ^ ((e>>>25)|(e<<7));
+      const ch = (e&f) ^ (~e&g);
+      const t1 = (h+S1+ch+K_MAIN[i]+w[i])>>>0;
+      const S0 = ((a>>>2)|(a<<30)) ^ ((a>>>13)|(a<<19)) ^ ((a>>>22)|(a<<10));
+      const maj = (a&b)^(a&c)^(b&c);
+      const t2 = (S0+maj)>>>0;
+      h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+    }
+    H[0]=(H[0]+a)>>>0; H[1]=(H[1]+b)>>>0; H[2]=(H[2]+c)>>>0; H[3]=(H[3]+d)>>>0;
+    H[4]=(H[4]+e)>>>0; H[5]=(H[5]+f)>>>0; H[6]=(H[6]+g)>>>0; H[7]=(H[7]+h)>>>0;
+  }
+  const out = new Uint8Array(32);
+  const odv = new DataView(out.buffer);
+  for(let i=0;i<8;i++) odv.setUint32(i*4,H[i]);
+  return out;
+}
+function sha256d(b){ return sha256(sha256(b)); }
+
+// ---------- Stratum ----------
+function connect(){
+  const url = document.getElementById('proxyUrl').value.trim();
+  const user = document.getElementById('btcUser').value.trim();
+  if(!url){ log('Informe o endereco do proxy (ws://...)','l-err'); return; }
+  if(!user){ log('Informe o usuario/endereco Bitcoin','l-err'); return; }
+
+  setStatus('conectando...');
+  ws = new WebSocket(url);
+
+  let subscribeId = -1, authorizeId = -1, suggestId = -1;
+
+  ws.onopen = function(){
+    log('WebSocket conectado ao proxy.','l-ok');
+    subscribeId = msgId++;
+    send({id: subscribeId, method:'mining.subscribe', params:['solo-miner-celular/2.0']});
+  };
+  ws.onclose = function(){ setStatus('desconectado','err'); log('Conexao encerrada.','l-warn'); stopMining(); };
+  ws.onerror = function(){ setStatus('erro de conexao','err'); log('Erro no WebSocket. Confira o endereco do proxy.','l-err'); };
+
+  let buffer = '';
+  ws.onmessage = function(ev){
+    buffer += ev.data;
+    let idx;
+    while((idx = buffer.indexOf(String.fromCharCode(10))) >= 0){
+      const line = buffer.slice(0, idx);
+      buffer = buffer.slice(idx+1);
+      if(line.trim()) handleStratumMessage(JSON.parse(line));
+    }
+  };
+
+  function send(obj){ ws.send(JSON.stringify(obj) + String.fromCharCode(10)); }
+  window.__stratumSend = send;
+
+  function handleStratumMessage(m){
+    if(m.id === subscribeId && m.result){
+      extranonce1 = m.result[1];
+      extranonce2Size = m.result[2];
+      log('Inscrito no pool. extranonce1=' + extranonce1 + ' size=' + extranonce2Size, 'l-ok');
+      authorizeId = msgId++;
+      send({id: authorizeId, method:'mining.authorize', params:[user, 'x']});
+      setStatus('conectado','on');
+    } else if(m.id === authorizeId){
+      // resposta do login - NAO e um share (contar isso inflava o contador)
+      log(m.result === true ? 'Worker autorizado pelo pool.' : 'Pool NAO autorizou este usuario/endereco.',
+          m.result === true ? 'l-ok' : 'l-err');
+      // pede uma dificuldade menor, para receber shares com frequencia visivel.
+      // Isso NAO altera a chance de achar um bloco - so a frequencia com que o
+      // pool pede comprovacao de trabalho. O pool pode ignorar ou limitar.
+      const sug = parseFloat(document.getElementById('sugDiff').value);
+      if(sug > 0){
+        suggestId = msgId++;
+        send({id: suggestId, method:'mining.suggest_difficulty', params:[sug]});
+        log('Sugerindo dificuldade ' + sug + ' ao pool...');
+      }
+    } else if(m.id === suggestId){
+      if(m.error) log('Pool nao aceitou a sugestao de dificuldade (vai usar a dele): ' + JSON.stringify(m.error), 'l-warn');
+      else log('Sugestao de dificuldade enviada. O valor que vale e o do proximo "Dificuldade do pool ajustada".');
+    } else if(m.method==='mining.notify'){
+      currentJob = {
+        jobId: m.params[0], prevhash: m.params[1], coinb1: m.params[2], coinb2: m.params[3],
+        merkleBranch: m.params[4], version: m.params[5], nbits: m.params[6], ntime: m.params[7]
+      };
+      log('Novo job recebido: ' + currentJob.jobId, 'l-warn');
+      if(running) startJob();
+    } else if(m.method==='mining.set_difficulty'){
+      poolDifficulty = m.params[0];
+      log('Dificuldade do pool ajustada: ' + poolDifficulty);
+      if(running){
+        const st = difficultyToShareTargetWords(poolDifficulty);
+        for(let i=0;i<workers.length;i++) workers[i].postMessage({type:'setShareTarget', shareTarget: st});
+      }
+    } else if(pendingSubmissions[m.id] !== undefined){
+      // resposta a um mining.submit NOSSO - so isso conta como share
+      const p = pendingSubmissions[m.id];
+      delete pendingSubmissions[m.id];
+      if(m.result === true){
+        sharesAccepted++;
+        sharesEl.textContent = sharesAccepted;
+        if(p.isBlock){
+          log('BLOCO ENCONTRADO! Este hash atingiu a dificuldade REAL da rede Bitcoin - o pool vai submeter a blockchain!', 'l-block');
+        } else {
+          log('Share ACEITO pelo pool!','l-ok');
+        }
+      } else {
+        log('Share REJEITADO: ' + JSON.stringify(m.error || m.result), 'l-err');
+      }
+    } else if(m.error){
+      log('Erro do pool: ' + JSON.stringify(m.error), 'l-err');
+    }
+  }
+}
+
+function buildHeaderPrefix(job, extranonce2Hex){
+  const coinbase = job.coinb1 + extranonce1 + extranonce2Hex + job.coinb2;
+  let merkle = sha256d(hexToBytes(coinbase));
+  for(let i=0;i<job.merkleBranch.length;i++){
+    merkle = sha256d(concatBytes(merkle, hexToBytes(job.merkleBranch[i])));
+  }
+  // version/prevhash/ntime/nbits vem do pool em ordem textual e precisam do swap de
+  // palavras. A merkle root NAO: ela sai do sha256d ja na ordem que o cabecalho usa.
+  // (conferido contra o bloco genesis: com swap o hash nao bate)
+  const hex = swapEndian32(job.version)
+            + swapEndian32(job.prevhash)
+            + bytesToHex(merkle)
+            + swapEndian32(job.ntime)
+            + swapEndian32(job.nbits);
+  return hexToBytes(hex);   // 76 bytes (cabecalho sem o nonce)
+}
+
+function startJob(){
+  if(!currentJob || !workers.length) return;
+  const shareTarget = difficultyToShareTargetWords(poolDifficulty);
+  const networkTarget = bitsToTargetWords(currentJob.nbits);
+  const n = workers.length;
+  for(let i=0;i<n;i++){
+    const extranonce2 = i.toString(16).padStart(extranonce2Size*2,'0');
+    const headerPrefix = buildHeaderPrefix(currentJob, extranonce2);
+    workers[i]._extranonce2 = extranonce2;
+    workers[i].postMessage({
+      type:'job', headerPrefix: headerPrefix, shareTarget: shareTarget,
+      networkTarget: networkTarget, nonceStart: Math.floor(4294967295 / n) * i
+    });
+  }
+}
+
+let hashrateTimer = null;
+let blobUrl = null;
+
+function startMining(){
+  const n = Math.max(1, Math.min(16, parseInt(document.getElementById('threads').value,10) || 4));
+  workers = [];
+  hashAccum = 0;
+  hashrateEma = 0;
+  lastRateAt = Date.now();
+
+  const blob = new Blob([workerSrc], {type:'application/javascript'});
+  blobUrl = URL.createObjectURL(blob);
+
+  for(let i=0;i<n;i++){
+    const w = new Worker(blobUrl);
+    w.onmessage = (function(idx){
+      return function(e){
+        const m = e.data;
+        if(m.type==='progress'){
+          hashAccum += m.hashes;
+        } else if(m.type==='engine'){
+          if(idx===0) enginePill.textContent = 'motor: ' + (m.motor || (m.wasm ? 'WASM' : 'JS'));
+        } else if(m.type==='found'){
+          if(m.isBlock) log('Nonce de nivel BLOCO encontrado (thread ' + idx + '): ' + m.nonce + ' - enviando...', 'l-block');
+          submitShare(idx, m.nonce, m.isBlock);
+        }
+      };
+    })(i);
+    w.onerror = (function(idx){
+      return function(err){ log('Erro na thread ' + idx + ': ' + err.message, 'l-err'); };
+    })(i);
+    workers.push(w);
+  }
+
+  threadsPill.textContent = n + ' threads';
+  running = true;
+  if(currentJob) startJob();
+
+  hashrateTimer = setInterval(function(){
+    const agora = Date.now();
+    const dt = (agora - lastRateAt) / 1000;
+    if(dt >= 0.5){
+      const inst = hashAccum / dt;
+      hashrateEma = hashrateEma > 0 ? (hashrateEma*0.6 + inst*0.4) : inst;
+      hashrateEl.textContent = fmtHashrate(hashrateEma);
+      updateEta();
+      hashAccum = 0;
+      lastRateAt = agora;
+    }
+  }, 1000);
+}
+
+function submitShare(workerIdx, nonce, isBlock){
+  if(!currentJob || !window.__stratumSend) return;
+  const id = msgId++;
+  pendingSubmissions[id] = { isBlock: !!isBlock };
+  window.__stratumSend({
+    id: id,
+    method: 'mining.submit',
+    params: [
+      document.getElementById('btcUser').value.trim(),
+      currentJob.jobId,
+      workers[workerIdx]._extranonce2,
+      currentJob.ntime,
+      (nonce >>> 0).toString(16).padStart(8,'0')
+    ]
+  });
+}
+
+function stopMining(){
+  running = false;
+  for(let i=0;i<workers.length;i++){
+    try{ workers[i].postMessage({type:'stop'}); workers[i].terminate(); }catch(e){}
+  }
+  workers = [];
+  if(blobUrl){ URL.revokeObjectURL(blobUrl); blobUrl = null; }
+  if(hashrateTimer){ clearInterval(hashrateTimer); hashrateTimer = null; }
+  hashrateEl.textContent = '0 H/s';
+  threadsPill.textContent = '0 threads';
+  hashrateEma = 0;
+  updateEta();
+}
+
+startBtn.addEventListener('click', function(){
+  startBtn.disabled = true; stopBtn.disabled = false;
+  connect();
+  startMining();
+});
+stopBtn.addEventListener('click', function(){
+  startBtn.disabled = false; stopBtn.disabled = true;
+  if(ws){ try{ ws.close(); }catch(e){} }
+  stopMining();
+  setStatus('desconectado');
+});
+
+fetchNetworkInfo();
+setInterval(fetchNetworkInfo, 5*60*1000);
+</script>
+</body>
+</html>
