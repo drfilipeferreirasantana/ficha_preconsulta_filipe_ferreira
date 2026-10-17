@@ -18,6 +18,9 @@ const db = require('./db');
 
 const app = express();
 app.use(cors());
+// Backups completos (com o texto integral das intimacoes do DJEN) passam
+// facilmente de 1 MB - limite maior so para a restauracao.
+app.use('/api/backup', express.json({ limit: '50mb' }));
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth', authRoutes);

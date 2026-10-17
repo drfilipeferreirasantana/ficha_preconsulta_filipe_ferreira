@@ -14,16 +14,31 @@ const bcrypt = require('bcryptjs');
  * devem ser usadas com "await" nas rotas.
  */
 
+// Conexao criptografada (SSL/TLS) - exigida por servicos de MySQL
+// gerenciado como o Aiven. Com DB_SSL_CA (o certificado "CA certificate"
+// que o painel do provedor oferece para download) a identidade do servidor
+// tambem e verificada; so com DB_SSL=true a conexao e criptografada, mas
+// sem essa verificacao.
+function sslConfig() {
+  const ca = (process.env.DB_SSL_CA || '').replace(/\\n/g, '\n').trim();
+  if (ca) return { ca, rejectUnauthorized: true };
+  if (process.env.DB_SSL === 'true') return { rejectUnauthorized: false };
+  return undefined;
+}
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'ffa',
+  ssl: sslConfig(),
+  charset: 'utf8mb4',
   namedPlaceholders: true,
   dateStrings: true,
   waitForConnections: true,
-  connectionLimit: 10
+  connectionLimit: 10,
+  enableKeepAlive: true
 });
 
 // Executa uma query e devolve so as linhas (SELECT).
@@ -186,4 +201,15 @@ function ready() {
   return readyPromise;
 }
 
-module.exports = { pool, query: all, all, get, run, transaction, ready };
+// Colunas existentes de uma tabela e o tipo de cada uma (ex: { id: 'int',
+// created_at: 'datetime', name: 'varchar' }) - usado pela restauracao de
+// backup para adaptar dados vindos do sistema antigo (SQLite).
+async function columnTypes(table) {
+  const rows = await all(
+    'SELECT COLUMN_NAME AS name, DATA_TYPE AS type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    [table]
+  );
+  return Object.fromEntries(rows.map((r) => [r.name, String(r.type).toLowerCase()]));
+}
+
+module.exports = { pool, query: all, all, get, run, transaction, ready, columnTypes };

@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.get('/summary', requireAuth, async (req, res) => {
   const receivable = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente'`)).total;
-  const overdue = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente' AND due_date < CURDATE()`)).total;
+  const overdue = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pendente' AND due_date IS NOT NULL AND due_date <> '' AND due_date < CURDATE()`)).total;
   const payable = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='pagar' AND status='pendente'`)).total;
   const receivedThisMonth = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pago' AND DATE_FORMAT(paid_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')`)).total;
   const receivedLastMonth = (await db.get(`SELECT COALESCE(SUM(amount),0) AS total FROM finance_entries WHERE type='receber' AND status='pago' AND DATE_FORMAT(paid_date, '%Y-%m') = DATE_FORMAT(DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 DAY), '%Y-%m')`)).total;

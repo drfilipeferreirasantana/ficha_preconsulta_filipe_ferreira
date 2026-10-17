@@ -40,8 +40,8 @@ async function getSetting(key) {
 async function setSetting(key, value) {
   await db.run(`
     INSERT INTO integration_settings (settings_key, value) VALUES (?, ?)
-    ON DUPLICATE KEY UPDATE value = VALUES(value)
-  `, [key, value]);
+    ON DUPLICATE KEY UPDATE value = ?
+  `, [key, value, value]);
 }
 
 async function isConnected() {

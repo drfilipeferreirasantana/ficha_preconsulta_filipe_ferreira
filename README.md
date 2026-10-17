@@ -14,41 +14,44 @@ index.html -> ficha de pré-consulta original (mantida como estava)
 
 ## Banco de dados (MySQL)
 
-O sistema usa **MySQL** (driver `mysql2`) — funciona com um banco criado na
-própria hospedagem (ex: Hostinger) ou em qualquer provedor MySQL/MariaDB.
-Isso resolve de vez o problema do Render free-tier apagar os dados a cada
-deploy: o banco fica fora do disco do Render, então um redeploy não afeta
-mais os dados.
+O sistema usa **MySQL** (driver `mysql2`) num serviço de banco **separado do
+servidor do sistema** — mesmo modelo dos CRMs jurídicos: o Render só roda o
+sistema, e os dados ficam num banco gerenciado. Um deploy troca o código, mas
+não toca no banco, então nada se perde.
 
-### Criando o banco na Hostinger
+### Criando o banco no Aiven (recomendado — plano gratuito)
 
-1. No hPanel, vá em **Bancos de Dados > Bancos de Dados MySQL** e crie um
-   banco novo (anote nome do banco, usuário e senha).
-2. Na mesma tela, em **Acesso Remoto ao MySQL**, adicione o host que vai se
-   conectar de fora (o Render). Se a Hostinger só aceitar um IP específico
-   (não um intervalo/`%`), você vai precisar do **IP de saída estático** do
-   seu serviço no Render — isso normalmente exige um plano pago do Render
-   (o plano Free não tem IP de saída fixo). Se sua Hostinger permitir `%`
-   (qualquer host), pode usar direto no plano Free.
-3. Anote o **host** do banco (em hPanel costuma aparecer como algo do tipo
-   `sql123.hostinger.com` ou o próprio IP do servidor de hospedagem — a
-   tela de "Acesso Remoto" mostra o host correto a usar de fora).
+1. Crie uma conta em https://console.aiven.io (pode entrar com o Google).
+2. **Create service → MySQL → plano Free**. Aguarde o status ficar
+   "Running" (alguns minutos).
+3. Na página do serviço, aba **Overview → Connection information**, anote:
+   **Host**, **Port**, **User** (`avnadmin`), **Password** e **Database
+   name** (`defaultdb`).
+4. Na mesma tela, em **CA certificate**, clique em "Show"/"Download" e copie
+   o conteúdo inteiro (de `-----BEGIN CERTIFICATE-----` até
+   `-----END CERTIFICATE-----`).
+
+Plano gratuito: 1 GB (sobra para anos de uso de um escritório), sem prazo de
+validade, uma cópia de backup, sem garantia de disponibilidade. O plano pago
+(US$ 5/mês) dá 8 GB e mais backups.
 
 ### Configurando
 
-No `.env` (local) ou nas variáveis de ambiente do Render (produção):
+No Render (**Environment**) ou no `.env` local:
 
 ```
-DB_HOST=<host do banco na Hostinger>
-DB_PORT=3306
-DB_USER=<usuario do banco>
-DB_PASSWORD=<senha do banco>
-DB_NAME=<nome do banco>
+DB_HOST=<Host do Aiven>
+DB_PORT=<Port do Aiven>
+DB_USER=avnadmin
+DB_PASSWORD=<Password do Aiven>
+DB_NAME=defaultdb
+DB_SSL_CA=<conteúdo do CA certificate>
 ```
 
 Ao iniciar, o sistema cria automaticamente todas as tabelas (se não
 existirem), aplica migrações e cria o usuário administrador padrão — não é
-preciso rodar nenhum script manual.
+preciso rodar nenhum script manual. Qualquer outro MySQL também funciona
+(ex: hospedagem própria): basta trocar os mesmos valores.
 
 ### Migrando dados de uma instalação antiga (SQLite, no Render)
 

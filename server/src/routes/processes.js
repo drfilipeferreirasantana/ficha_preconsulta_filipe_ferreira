@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
   const params = [];
   if (status) { sql += ' AND processes.status = ?'; params.push(status); }
   if (client_id) { sql += ' AND processes.client_id = ?'; params.push(client_id); }
-  if (upcoming) { sql += ' AND processes.next_deadline IS NOT NULL AND processes.next_deadline <= DATE_ADD(CURDATE(), INTERVAL ? DAY)'; params.push(Number(upcoming) || 7); }
+  if (upcoming) { sql += " AND processes.next_deadline IS NOT NULL AND processes.next_deadline <> '' AND processes.next_deadline <= DATE_ADD(CURDATE(), INTERVAL ? DAY)"; params.push(Number(upcoming) || 7); }
   if (q) {
     sql += ' AND (clients.name LIKE ? OR processes.number LIKE ?)';
     const like = `%${q}%`;
