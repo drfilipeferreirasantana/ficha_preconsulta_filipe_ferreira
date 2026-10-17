@@ -137,6 +137,36 @@ async function ensureColumns(table, columns) {
   }
 }
 
+// Aumenta colunas de texto que ficaram curtas em bancos ja existentes
+// (CREATE TABLE IF NOT EXISTS nao altera tabelas prontas). So aumenta,
+// nunca diminui, e so mexe quando o tamanho atual e menor que o desejado.
+const WIDER_COLUMNS = {
+  clients: { document: 'VARCHAR(100)', phone: 'VARCHAR(100)', case_type: 'VARCHAR(255)' },
+  processes: { number: 'VARCHAR(100)', court: 'VARCHAR(255)', subject: 'VARCHAR(500)', phase: 'VARCHAR(255)', next_deadline_desc: 'VARCHAR(500)' },
+  finance_entries: { category: 'VARCHAR(255)' },
+  document_templates: { title: 'VARCHAR(500) NOT NULL', category: 'VARCHAR(255)' },
+  tasks: { title: 'VARCHAR(500) NOT NULL' },
+  notifications: { title: 'VARCHAR(500) NOT NULL' },
+  djen_communications: { process_number: 'VARCHAR(100)', court: 'VARCHAR(100)', communication_type: 'VARCHAR(255)', org_name: 'VARCHAR(500)', class_name: 'VARCHAR(500)' }
+};
+
+async function widenColumns() {
+  for (const [table, columns] of Object.entries(WIDER_COLUMNS)) {
+    const rows = await all(
+      'SELECT COLUMN_NAME AS name, CHARACTER_MAXIMUM_LENGTH AS len FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+      [table]
+    );
+    const current = Object.fromEntries(rows.map((r) => [r.name, Number(r.len)]));
+    for (const [col, definition] of Object.entries(columns)) {
+      const wanted = Number(definition.match(/\((\d+)\)/)[1]);
+      if (current[col] && current[col] < wanted) {
+        await pool.query(`ALTER TABLE ${table} MODIFY COLUMN ${col} ${definition}`);
+        console.log(`[setup] Coluna ${table}.${col} ampliada para ${wanted} caracteres.`);
+      }
+    }
+  }
+}
+
 async function ensureIndex(sql) {
   try {
     await pool.query(sql);
@@ -169,6 +199,8 @@ async function setup() {
       await pool.query(statement);
     }
   }
+
+  await widenColumns();
 
   await ensureColumns('processes', {
     case_value: 'DOUBLE',

@@ -306,6 +306,23 @@
     });
   }
 
+  // Tamanho maximo de cada campo de texto, igual ao do banco de dados: o
+  // navegador para de aceitar letras no limite em vez de dar erro ao salvar.
+  const FIELD_MAXLENGTH = {
+    'f-name': 255, 'f-new-name': 255, 'f-document': 100, 'f-new-document': 100,
+    'f-phone': 100, 'f-new-phone': 100, 'f-email': 255, 'f-new-email': 255,
+    'f-city': 255, 'f-case_type': 255,
+    'f-number': 100, 'f-court': 255, 'f-subject': 500, 'f-phase': 255,
+    'f-responsible': 255, 'f-next_deadline_desc': 500,
+    'f-category': 255, 'f-title': 500, 'f-prazo-title': 500
+  };
+  function applyMaxLengths(root) {
+    Object.entries(FIELD_MAXLENGTH).forEach(([id, n]) => {
+      const el = root.querySelector('#' + id);
+      if (el && el.tagName === 'INPUT' && el.type !== 'date') el.maxLength = n;
+    });
+  }
+
   function openModal(html) {
     clearTimeout(draftSaveTimer);
     // Um formulario salvo pode abrir direto outra janela (ex: "Processo
@@ -313,6 +330,7 @@
     if (draftKey && submittedOk) storageDel(draftKey);
     submittedOk = false;
     modalContent.innerHTML = html;
+    applyMaxLengths(modalContent);
     overlay.classList.add('active');
     pingServer(); // acorda o servidor enquanto o formulario e preenchido
     draftKey = modalDraftKey();

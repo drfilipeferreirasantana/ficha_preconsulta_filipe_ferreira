@@ -13,11 +13,11 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS clients (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(255) NOT NULL,
-  document VARCHAR(50),      -- CPF/CNPJ
-  phone VARCHAR(30),
+  document VARCHAR(100),     -- CPF/CNPJ
+  phone VARCHAR(100),
   email VARCHAR(255),
   city VARCHAR(255),
-  case_type VARCHAR(100),    -- motivo principal (divorcio, inventario, etc)
+  case_type VARCHAR(255),    -- motivo principal (divorcio, inventario, etc)
   status VARCHAR(30) NOT NULL DEFAULT 'lead', -- lead | ativo | inativo | ex_cliente
   origin VARCHAR(30) DEFAULT 'manual', -- manual | ficha_preconsulta | indicacao
   urgency INT,
@@ -32,16 +32,16 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS processes (
   id INT PRIMARY KEY AUTO_INCREMENT,
   client_id INT NOT NULL,
-  number VARCHAR(60),           -- numero CNJ do processo
-  court VARCHAR(60),            -- ex: TJES, TRF2, TJES-PUMA
+  number VARCHAR(100),          -- numero CNJ do processo
+  court VARCHAR(255),           -- ex: TJES, TRF2, TJES-PUMA
   court_system VARCHAR(30),     -- pje | puma | esaj | fisico | outro
-  subject VARCHAR(255),         -- assunto/classe
-  phase VARCHAR(100),           -- fase atual (conhecimento, execucao, recursal...)
+  subject VARCHAR(500),         -- assunto/classe
+  phase VARCHAR(255),           -- fase atual (conhecimento, execucao, recursal...)
   status VARCHAR(30) NOT NULL DEFAULT 'ativo', -- ativo | suspenso | arquivado | encerrado
   responsible VARCHAR(255),     -- advogado responsavel (nome, para exibicao)
   responsible_user_id INT,      -- vinculo com usuario do sistema, se houver
   next_deadline VARCHAR(20),    -- proximo prazo (data ISO)
-  next_deadline_desc VARCHAR(255),
+  next_deadline_desc VARCHAR(500),
   monitoring_mode VARCHAR(20) NOT NULL DEFAULT 'manual', -- manual | automatico
   last_sync_at DATETIME,
   last_monitor_status VARCHAR(30), -- sucesso | sem_movimentacao | erro
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS finance_entries (
   client_id INT,
   process_id INT,
   type VARCHAR(20) NOT NULL,     -- receber | pagar
-  category VARCHAR(60),          -- honorarios, custas, despesa_fixa, etc
+  category VARCHAR(255),         -- honorarios, custas, despesa_fixa, etc
   description TEXT NOT NULL,
   amount DOUBLE NOT NULL,
   due_date VARCHAR(20),
@@ -93,8 +93,8 @@ CREATE TABLE IF NOT EXISTS finance_entries (
 -- body_html aceita placeholders tipo {{cliente_nome}} substituidos na geracao.
 CREATE TABLE IF NOT EXISTS document_templates (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  title VARCHAR(255) NOT NULL,
-  category VARCHAR(60),      -- ex: peticao, contrato, procuracao
+  title VARCHAR(500) NOT NULL,
+  category VARCHAR(255),     -- ex: peticao, contrato, procuracao
   body_html LONGTEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS document_templates (
 
 CREATE TABLE IF NOT EXISTS tasks (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  title VARCHAR(255) NOT NULL,
+  title VARCHAR(500) NOT NULL,
   description TEXT,
   client_id INT,
   process_id INT,
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS integration_settings (
 CREATE TABLE IF NOT EXISTS notifications (
   id INT PRIMARY KEY AUTO_INCREMENT,
   process_id INT,
-  title VARCHAR(255) NOT NULL,
+  title VARCHAR(500) NOT NULL,
   message TEXT,
   source VARCHAR(20) NOT NULL DEFAULT 'sistema', -- sistema | djen | pje | puma | esaj
   is_read TINYINT(1) NOT NULL DEFAULT 0,
@@ -147,11 +147,11 @@ CREATE TABLE IF NOT EXISTS djen_communications (
   id INT PRIMARY KEY AUTO_INCREMENT,
   external_id VARCHAR(255) UNIQUE, -- "id" retornado pela API do DJEN, usado para evitar duplicidade
   process_id INT,
-  process_number VARCHAR(60),      -- numero do processo com mascara (numeroprocessocommascara)
-  court VARCHAR(60),               -- siglaTribunal
-  communication_type VARCHAR(100), -- tipoComunicacao
-  org_name VARCHAR(255),           -- nomeOrgao
-  class_name VARCHAR(255),         -- nomeClasse
+  process_number VARCHAR(100),     -- numero do processo com mascara (numeroprocessocommascara)
+  court VARCHAR(100),              -- siglaTribunal
+  communication_type VARCHAR(255), -- tipoComunicacao
+  org_name VARCHAR(500),           -- nomeOrgao
+  class_name VARCHAR(500),         -- nomeClasse
   content LONGTEXT,                -- texto (HTML removido)
   link VARCHAR(500),               -- link para o documento oficial (pode ser nulo em sigilo)
   sigiloso TINYINT(1) NOT NULL DEFAULT 0, -- 1 se algum destinatario aparece em segredo de justica

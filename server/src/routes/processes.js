@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const pje = require('../integrations/pje');
 const whatsapp = require('../utils/whatsapp');
 const email = require('../utils/email');
+const { friendlyError } = require('../utils/errors');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -146,7 +147,8 @@ router.post('/', async (req, res) => {
       return { clientId, processId, financeInserted };
     });
   } catch (err) {
-    return res.status(400).json({ error: err.message });
+    // Erros de validacao proprios (sem code) ja vem em portugues.
+    return res.status(err.code ? friendlyError(err).status : 400).json({ error: err.code ? friendlyError(err).message : err.message });
   }
 
   const client = await db.get('SELECT * FROM clients WHERE id = ?', [result.clientId]);

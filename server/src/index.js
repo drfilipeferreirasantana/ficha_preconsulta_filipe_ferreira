@@ -2,6 +2,11 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const { installAsyncErrorHandling, friendlyError } = require('./utils/errors');
+
+// Deve vir antes das rotas: erros em rotas async passam a ir para o
+// tratador central abaixo em vez de derrubar o servidor.
+installAsyncErrorHandling();
 
 const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
@@ -49,8 +54,17 @@ app.use(express.static(path.join(__dirname, '..', '..', 'public'), {
 }));
 
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Erro interno do servidor.' });
+  const { status, message } = friendlyError(err);
+  if (status >= 500) console.error(`[erro] ${req.method} ${req.originalUrl}:`, err);
+  else console.warn(`[aviso] ${req.method} ${req.originalUrl}: ${err.code || ''} ${err.message}`);
+  if (res.headersSent) return next(err);
+  res.status(status).json({ error: message });
+});
+
+// Ultima linha de defesa: um erro esquecido em tarefa de fundo e
+// registrado no log, sem encerrar o servidor para todos os usuarios.
+process.on('unhandledRejection', (reason) => {
+  console.error('[erro nao tratado]', reason);
 });
 
 const PORT = process.env.PORT || 3000;

@@ -170,7 +170,7 @@ router.post('/djen/communications/:id/prazo', requireAuth, async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const current = comm.next_deadline || '';
     if (!current || current < today || final < current) {
-      await db.run('UPDATE processes SET next_deadline = ?, next_deadline_desc = ? WHERE id = ?', [final, title.slice(0, 255), comm.process_id]);
+      await db.run('UPDATE processes SET next_deadline = ?, next_deadline_desc = ? WHERE id = ?', [final, title.slice(0, 500), comm.process_id]);
     }
   }
   await db.run('UPDATE djen_communications SET is_read = 1 WHERE id = ?', [comm.id]);
