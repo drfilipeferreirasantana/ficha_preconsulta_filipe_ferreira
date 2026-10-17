@@ -38,13 +38,40 @@ const pool = mysql.createPool({
   dateStrings: true,
   waitForConnections: true,
   connectionLimit: 10,
-  enableKeepAlive: true
+  connectTimeout: 10000,
+  // Conexoes paradas sao descartadas apos 1 minuto: entre o servidor e o
+  // banco ha firewalls que derrubam em silencio conexoes ociosas, e a
+  // proxima consulta numa conexao dessas ficaria pendurada por minutos.
+  maxIdle: 0,
+  idleTimeout: 60000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 });
 
-// Executa uma query e devolve so as linhas (SELECT).
+// Nenhuma consulta pode ficar pendurada: passado esse tempo, ela falha com
+// erro e a tela avisa, em vez de "travar".
+const QUERY_TIMEOUT_MS = 20000;
+const CONNECTION_ERRORS = new Set([
+  'PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT',
+  'PROTOCOL_SEQUENCE_TIMEOUT', 'ECONNREFUSED', 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+]);
+
+async function exec(sql, params) {
+  return pool.query({ sql, timeout: QUERY_TIMEOUT_MS }, params);
+}
+
+// Executa uma query e devolve so as linhas (SELECT). Leituras sao repetidas
+// uma vez se a conexao tiver caido no meio (repetir uma leitura e seguro).
 async function all(sql, params) {
-  const [rows] = await pool.query(sql, params);
-  return rows;
+  try {
+    const [rows] = await exec(sql, params);
+    return rows;
+  } catch (err) {
+    if (!CONNECTION_ERRORS.has(err.code)) throw err;
+    console.warn('[db] conexao caiu durante leitura, tentando de novo:', err.code);
+    const [rows] = await exec(sql, params);
+    return rows;
+  }
 }
 
 // Executa uma query e devolve so a primeira linha, ou undefined.
@@ -56,7 +83,7 @@ async function get(sql, params) {
 // Executa um INSERT/UPDATE/DELETE. Devolve { lastInsertRowid, changes } no
 // mesmo formato que as rotas ja esperavam do better-sqlite3.
 async function run(sql, params) {
-  const [result] = await pool.query(sql, params);
+  const [result] = await exec(sql, params);
   return { lastInsertRowid: result.insertId, changes: result.affectedRows };
 }
 
@@ -64,19 +91,20 @@ async function run(sql, params) {
 // objeto com run/get/all iguais aos acima, mas presos a mesma conexao/transacao.
 async function transaction(fn) {
   const conn = await pool.getConnection();
+  const q = (sql, params) => conn.query({ sql, timeout: QUERY_TIMEOUT_MS }, params);
   try {
     await conn.beginTransaction();
     const txDb = {
       run: async (sql, params) => {
-        const [result] = await conn.query(sql, params);
+        const [result] = await q(sql, params);
         return { lastInsertRowid: result.insertId, changes: result.affectedRows };
       },
       get: async (sql, params) => {
-        const [rows] = await conn.query(sql, params);
+        const [rows] = await q(sql, params);
         return rows[0];
       },
       all: async (sql, params) => {
-        const [rows] = await conn.query(sql, params);
+        const [rows] = await q(sql, params);
         return rows;
       }
     };
@@ -84,10 +112,12 @@ async function transaction(fn) {
     await conn.commit();
     return result;
   } catch (err) {
-    await conn.rollback();
+    // Se a conexao caiu, o rollback tambem falha; o erro que importa e o
+    // original (o banco desfaz sozinho a transacao de uma conexao perdida).
+    await conn.rollback().catch(() => {});
     throw err;
   } finally {
-    conn.release();
+    try { conn.release(); } catch (e) { /* conexao ja destruida */ }
   }
 }
 

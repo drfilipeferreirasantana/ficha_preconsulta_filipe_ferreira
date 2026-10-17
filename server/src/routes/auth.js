@@ -25,6 +25,15 @@ router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
+// Renova o login enquanto o sistema estiver aberto: a tela chama esta rota
+// de tempos em tempos e recebe um token novo, entao a sessao nao expira no
+// meio do trabalho (so expira se o sistema ficar fechado por mais de 12h).
+router.post('/refresh', requireAuth, async (req, res) => {
+  const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  if (!user) return res.status(401).json({ error: 'Usuário não encontrado.' });
+  res.json({ token: signToken(user), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+});
+
 // Criacao de novos usuarios da equipe - somente admin
 router.post('/users', requireAuth, async (req, res) => {
   if (req.user.role !== 'admin') {

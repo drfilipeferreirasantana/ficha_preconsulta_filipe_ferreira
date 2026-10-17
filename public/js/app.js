@@ -6,14 +6,72 @@
   let CLIENTS_CACHE = [];
 
   // ---------- helpers ----------
+  // Toda chamada ao servidor passa por aqui. Garante que nenhuma acao fique
+  // "travada" sem retorno: mostra um aviso se demorar (o servidor gratuito
+  // pode levar ate ~1 minuto para acordar), desiste com mensagem clara apos
+  // 90s e nunca apaga o que esta preenchido na tela.
+  const API_TIMEOUT_MS = 90000;
+  let inFlight = 0;
+  let slowTimer = null;
+
+  function statusBar() {
+    let el = document.getElementById('net-status');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'net-status';
+      el.setAttribute('role', 'status');
+      el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:2000;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);border-radius:3px;padding:10px 16px;font-size:12.5px;box-shadow:0 6px 24px rgba(0,0,0,.35);max-width:calc(100vw - 32px);display:none';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  function showStatus(text) { const el = statusBar(); el.textContent = text; el.style.display = 'block'; }
+  function hideStatus() { const el = document.getElementById('net-status'); if (el) el.style.display = 'none'; }
+
+  function requestStarted() {
+    inFlight += 1;
+    if (inFlight === 1) {
+      clearTimeout(slowTimer);
+      slowTimer = setTimeout(() => showStatus('Conectando ao servidor… se o sistema estava parado, isso pode levar até 1 minuto. Não feche nem recarregue a página.'), 1500);
+    }
+  }
+  function requestFinished() {
+    inFlight = Math.max(0, inFlight - 1);
+    if (inFlight === 0) {
+      clearTimeout(slowTimer);
+      hideStatus();
+      document.querySelectorAll('[data-busy-disabled]').forEach((b) => {
+        b.disabled = false;
+        if (b.dataset.busyLabel) b.textContent = b.dataset.busyLabel;
+        delete b.dataset.busyDisabled;
+        delete b.dataset.busyLabel;
+      });
+    }
+  }
+
   async function api(path, opts = {}) {
     const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
     if (TOKEN) headers.Authorization = 'Bearer ' + TOKEN;
-    const resp = await fetch(API + path, Object.assign({}, opts, { headers }));
-    if (resp.status === 401) { logout(); throw new Error('Sessao expirada.'); }
-    if (resp.status === 204) return null;
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.error || 'Erro na requisicao.');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+    requestStarted();
+    let resp;
+    try {
+      resp = await fetch(API + path, Object.assign({}, opts, { headers, signal: ctrl.signal }));
+    } catch (err) {
+      submittedOk = false;
+      throw new Error('O servidor não respondeu. Verifique a internet e clique em salvar de novo: o que você preencheu continua na tela.');
+    } finally {
+      clearTimeout(timer);
+      requestFinished();
+    }
+    const data = resp.status === 204 ? null : await resp.json().catch(() => ({}));
+    if (!resp.ok) submittedOk = false;
+    if (resp.status === 401 && path !== '/auth/login') {
+      logout();
+      throw new Error('Sua sessão expirou. Entre de novo: o formulário que estava preenchendo fica guardado como rascunho.');
+    }
+    if (!resp.ok) throw new Error((data && data.error) || 'Erro ao comunicar com o servidor.');
     return data;
   }
 
@@ -54,6 +112,7 @@
 
   // ---------- auth ----------
   function logout() {
+    clearInterval(keepAliveTimer);
     TOKEN = null; ME = null;
     localStorage.removeItem('ffa_token');
     document.getElementById('app').classList.remove('active');
@@ -71,7 +130,45 @@
     }
   }
 
+  // Enquanto o sistema estiver aberto: avisa o servidor a cada 10 minutos
+  // (o plano gratuito do Render dorme apos 15 minutos sem nenhum acesso) e
+  // renova o login a cada hora, para a sessao nao expirar no meio do dia.
+  const KEEPALIVE_MS = 10 * 60 * 1000;
+  const REFRESH_MS = 60 * 60 * 1000;
+  let keepAliveTimer = null;
+  let lastRefresh = Date.now();
+
+  function pingServer() {
+    fetch(API + '/health', { cache: 'no-store' }).catch(() => {});
+  }
+  async function refreshSession() {
+    if (!TOKEN) return;
+    try {
+      const r = await fetch(API + '/auth/refresh', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN } });
+      if (r.ok) {
+        const data = await r.json();
+        TOKEN = data.token; ME = data.user;
+        localStorage.setItem('ffa_token', TOKEN);
+        lastRefresh = Date.now();
+      }
+    } catch (e) { /* sem internet agora: tenta de novo no proximo ciclo */ }
+  }
+  function startSessionKeeper() {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = setInterval(() => {
+      pingServer();
+      if (Date.now() - lastRefresh >= REFRESH_MS) refreshSession();
+    }, KEEPALIVE_MS);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !TOKEN) return;
+    pingServer();
+    if (Date.now() - lastRefresh >= REFRESH_MS) refreshSession();
+  });
+
   function enterApp() {
+    startSessionKeeper();
+    refreshSession();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').classList.add('active');
     document.getElementById('who-am-i').textContent = `${ME.name} · ${ME.role}`;
@@ -124,12 +221,157 @@
   // ---------- modal ----------
   const overlay = document.getElementById('modal-overlay');
   const modalContent = document.getElementById('modal-content');
+  // Rascunho automatico: tudo o que e digitado num formulario fica guardado
+  // neste navegador ate o formulario ser salvo com sucesso ou cancelado. Se
+  // a pagina for recarregada (F5) ou a sessao cair, ao abrir o mesmo
+  // formulario de novo os dados voltam preenchidos.
+  const DRAFT_PREFIX = 'ffa_draft:';
+  const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+  let draftKey = null;
+  let draftSaveTimer = null;
+  let submittedOk = false;
+
+  function storageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function storageSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* armazenamento indisponivel */ } }
+  function storageDel(k) { try { localStorage.removeItem(k); } catch (e) { /* idem */ } }
+
+  function modalDraftKey() {
+    const form = modalContent.querySelector('form');
+    const title = modalContent.querySelector('h3');
+    if (!form || !form.id || !title) return null;
+    // So cadastros novos ("Novo processo", "Nova tarefa"...). Num "Editar",
+    // o rascunho de um registro poderia ser aplicado em outro.
+    const t = title.textContent.trim();
+    if (!/^Nov[oa]\b/.test(t)) return null;
+    return DRAFT_PREFIX + form.id + '|' + t;
+  }
+  function collectDraft(form) {
+    const values = {};
+    const radios = {};
+    form.querySelectorAll('input, select, textarea').forEach((el) => {
+      if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || el.type === 'submit' || el.type === 'button') return;
+      if (el.type === 'radio') { if (el.checked && el.name) radios[el.name] = el.value; return; }
+      if (!el.id) return;
+      values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    return { values, radios };
+  }
+  function draftHasContent(d) {
+    return Object.values(d.values).some((v) => v !== '' && v !== false);
+  }
+  function saveDraftNow() {
+    if (!draftKey) return;
+    const form = modalContent.querySelector('form');
+    if (!form) return;
+    const d = collectDraft(form);
+    if (draftHasContent(d)) storageSet(draftKey, JSON.stringify({ t: Date.now(), ...d }));
+  }
+  function restoreDraft() {
+    const key = modalDraftKey();
+    draftKey = key;
+    if (!key) return;
+    const raw = storageGet(key);
+    if (!raw) return;
+    let d;
+    try { d = JSON.parse(raw); } catch (e) { storageDel(key); return; }
+    if (!d || Date.now() - d.t > DRAFT_MAX_AGE_MS) { storageDel(key); return; }
+    const form = modalContent.querySelector('form');
+    if (!form) return;
+    // Radios e caixas primeiro: eles mostram/escondem partes do formulario.
+    Object.entries(d.radios || {}).forEach(([name, value]) => {
+      const el = form.querySelector(`input[type="radio"][name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`);
+      if (el && !el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    Object.entries(d.values || {}).forEach(([id, value]) => {
+      const el = form.querySelector('#' + CSS.escape(id));
+      if (!el || el.type !== 'checkbox' || el.checked === value) return;
+      el.checked = value; el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    Object.entries(d.values || {}).forEach(([id, value]) => {
+      const el = form.querySelector('#' + CSS.escape(id));
+      if (!el || el.type === 'checkbox' || typeof value !== 'string' || value === el.value) return;
+      if (el.tagName === 'SELECT' && !Array.from(el.options).some((o) => o.value === value)) return;
+      el.value = value;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const note = document.createElement('div');
+    note.className = 'notice';
+    note.style.marginBottom = '12px';
+    note.innerHTML = 'Rascunho recuperado: os dados que você tinha preenchido voltaram. <span class="link-btn" id="draft-discard">descartar rascunho</span>';
+    form.prepend(note);
+    note.querySelector('#draft-discard').addEventListener('click', () => {
+      storageDel(key);
+      draftKey = null; // nao grava de novo o que esta na tela
+      note.textContent = 'Rascunho descartado. Para começar do zero, feche e abra o formulário novamente.';
+    });
+  }
+
   function openModal(html) {
+    clearTimeout(draftSaveTimer);
+    // Um formulario salvo pode abrir direto outra janela (ex: "Processo
+    // cadastrado"); o rascunho do formulario salvo tambem e apagado.
+    if (draftKey && submittedOk) storageDel(draftKey);
+    submittedOk = false;
     modalContent.innerHTML = html;
     overlay.classList.add('active');
+    pingServer(); // acorda o servidor enquanto o formulario e preenchido
+    draftKey = modalDraftKey();
+    // Espera os campos que carregam do servidor (listas de clientes,
+    // usuarios) antes de devolver os valores do rascunho.
+    if (draftKey && storageGet(draftKey)) setTimeout(restoreDraft, 700);
   }
-  function closeModal() { overlay.classList.remove('active'); modalContent.innerHTML = ''; }
+  function closeModal() {
+    clearTimeout(draftSaveTimer);
+    if (draftKey && submittedOk) storageDel(draftKey);
+    draftKey = null;
+    submittedOk = false;
+    overlay.classList.remove('active');
+    modalContent.innerHTML = '';
+  }
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  modalContent.addEventListener('input', () => {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftNow, 400);
+  });
+  modalContent.addEventListener('change', () => {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftNow, 400);
+  });
+  // Se um campo obrigatorio vazio estiver escondido, o navegador bloqueia o
+  // envio sem mostrar nada. Aqui isso vira uma mensagem dizendo qual campo.
+  let invalidWarned = false;
+  modalContent.addEventListener('invalid', (e) => {
+    const el = e.target;
+    if (invalidWarned || el.offsetParent !== null) return;
+    invalidWarned = true;
+    setTimeout(() => { invalidWarned = false; }, 500);
+    const label = el.closest('.field') && el.closest('.field').querySelector('label');
+    alert(`Não foi possível salvar: preencha o campo "${label ? label.textContent.trim() : (el.name || el.id)}".`);
+  }, true);
+
+  // "Cancelar" e uma desistencia: apaga o rascunho. Fechar clicando fora
+  // (que costuma ser sem querer) mantem.
+  modalContent.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'modal-cancel' && draftKey) storageDel(draftKey);
+  }, true);
+  // Ao enviar: grava o rascunho na hora, trava o botao com "Salvando…" ate
+  // a resposta chegar (evita salvar duas vezes) e, se o formulario fechar
+  // depois, considera salvo com sucesso.
+  modalContent.addEventListener('submit', (e) => {
+    saveDraftNow();
+    const form = e.target;
+    const btn = form.querySelector('button[type="submit"]');
+    setTimeout(() => {
+      if (btn && inFlight > 0 && !btn.disabled) {
+        btn.dataset.busyDisabled = '1';
+        btn.dataset.busyLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Salvando…';
+      }
+    }, 0);
+    submittedOk = true;
+  }, true);
 
   async function clientOptions(selectedId) {
     if (!CLIENTS_CACHE.length) CLIENTS_CACHE = await api('/clients');
@@ -432,8 +674,8 @@
           <div id="client-existing-block" class="field"><select id="f-client_id"></select></div>
           <div id="client-new-block" style="display:none">
             <div class="g2">
-              <div class="field"><label>Nome completo</label><input id="f-new-name" required></div>
-              <div class="field"><label>WhatsApp</label><input id="f-new-phone" placeholder="(27) 99999-9999" required></div>
+              <div class="field"><label>Nome completo</label><input id="f-new-name"></div>
+              <div class="field"><label>WhatsApp</label><input id="f-new-phone" placeholder="(27) 99999-9999"></div>
             </div>
             <div class="g2">
               <div class="field"><label>E-mail</label><input type="email" id="f-new-email"></div>
@@ -501,14 +743,19 @@
       // Importante: um campo "required" escondido (display:none) trava o
       // envio do formulário sem nenhum aviso visível ao usuário - por isso
       // alternamos o atributo required junto com a visibilidade dos blocos.
-      form.querySelectorAll('input[name="client_mode"]').forEach((r) => r.addEventListener('change', () => {
-        if (!r.checked) return;
-        const isExisting = r.value === 'existing';
+      // O estado inicial tambem passa por aqui (antes so a troca passava, e
+      // o formulario abria com os campos escondidos de "novo cliente"
+      // obrigatorios - o Salvar nao fazia nada para cliente ja cadastrado).
+      const applyClientMode = (isExisting) => {
         existingBlock.style.display = isExisting ? 'block' : 'none';
         newBlock.style.display = isExisting ? 'none' : 'block';
         existingSelect.required = isExisting;
         newNameInput.required = !isExisting;
         newPhoneInput.required = !isExisting;
+      };
+      applyClientMode(form.querySelector('input[name="client_mode"]:checked').value === 'existing');
+      form.querySelectorAll('input[name="client_mode"]').forEach((r) => r.addEventListener('change', () => {
+        if (r.checked) applyClientMode(r.value === 'existing');
       }));
       wireFeeFieldEvents(form);
     }
@@ -1426,5 +1673,13 @@
   });
 
   // ---------- boot ----------
+  // Qualquer erro que um formulario nao tratou vira uma mensagem na tela,
+  // em vez de o botao simplesmente "nao fazer nada".
+  window.addEventListener('unhandledrejection', (e) => {
+    const msg = e.reason && e.reason.message ? e.reason.message : String(e.reason || 'Erro inesperado.');
+    e.preventDefault();
+    alert('Não foi possível concluir: ' + msg);
+  });
+
   tryAutoLogin();
 })();
