@@ -1004,11 +1004,147 @@
         ${item.client_name ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Cliente vinculado: ${esc(item.client_name)}</div>` : ''}
         ${item.content ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(item.content.slice(0, 250))}${item.content.length > 250 ? '…' : ''}</div>` : ''}
         <div style="margin-top:6px;display:flex;gap:14px">
+          <span class="link-btn" data-prazo-djen="${item.id}">criar prazo</span>
           ${!item.is_read ? `<span class="link-btn" data-mark-djen-read="${item.id}">marcar como lida</span>` : ''}
           ${item.link ? `<a class="link-btn" target="_blank" href="${esc(item.link)}">ver íntegra</a>` : ''}
           <span class="link-btn" data-del-djen="${item.id}" style="color:var(--danger)">excluir</span>
         </div>
       </div>`;
+  }
+
+  // ---------- Criar prazo a partir de uma intimação ----------
+  // O cálculo (dias úteis, feriados nacionais, recesso, regra de publicação
+  // do DJEN) é feito no servidor - aqui só mostramos e deixamos ajustar.
+  function openPrazoModal(item) {
+    if (!item) return;
+    const defaultTitle = `Prazo: ${item.communication_type || 'Intimação'} - ${item.process_number || 'processo não identificado'}`;
+    const resumo = (item.content || '').slice(0, 300);
+    openModal(`
+      <h3>Criar prazo</h3>
+      <p class="muted" style="font-size:12px;margin:-4px 0 14px">
+        ${esc(item.court || '—')} · ${esc(item.communication_type || 'Comunicação')} ·
+        ${item.process_number ? 'Processo ' + esc(item.process_number) : 'Processo não identificado'}
+        ${item.client_name ? ' · Cliente: ' + esc(item.client_name) : ' · sem processo cadastrado vinculado'}
+      </p>
+      <form id="prazo-form">
+        <div class="g2">
+          <div class="field"><label>Disponibilizada no DJEN em</label><input type="date" id="f-prazo-disp" required value="${esc(String(item.disponibilizacao_date || '').slice(0, 10))}"></div>
+          <div class="field"><label>Prazo (dias)</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              ${[5, 10, 15, 30].map((n) => `<button type="button" class="btn btn-outline" data-prazo-dias="${n}" style="padding:6px 10px">${n}</button>`).join('')}
+              <input type="number" id="f-prazo-dias" min="1" max="365" value="15" style="width:72px">
+            </div>
+          </div>
+        </div>
+        <div class="g2">
+          <div class="field"><label>Contagem</label>
+            <select id="f-prazo-contagem"><option value="uteis" selected>Dias úteis (CPC art. 219)</option><option value="corridos">Dias corridos (ex: penal)</option></select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="f-prazo-dobro" style="width:16px;height:16px"> Prazo em dobro (Fazenda Pública, Defensoria)
+            </label>
+          </div>
+        </div>
+        <div class="notice" style="margin:4px 0 12px">
+          <div class="field" style="margin:0 0 6px"><label>Prazo final</label><input type="date" id="f-prazo-final" required></div>
+          <div id="prazo-explica" style="font-size:12px">Calculando…</div>
+          <div style="font-size:11px;margin-top:6px;opacity:.8">Considera só feriados nacionais e o recesso de 20/12 a 20/01. Feriados locais e suspensões do tribunal: ajuste a data acima se for o caso.</div>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="f-prazo-lembrete" checked style="width:16px;height:16px"> Criar lembrete interno 2 dias úteis antes
+          </label>
+        </div>
+        <div class="field"><label>Título da tarefa</label><input id="f-prazo-title" value="${esc(defaultTitle)}"></div>
+        <div class="g2">
+          <div class="field"><label>Prioridade</label>
+            <select id="f-prazo-priority"><option value="media">Média</option><option value="alta" selected>Alta</option><option value="urgente">Urgente</option></select>
+          </div>
+          <div class="field"><label>Observação (opcional)</label><input id="f-prazo-desc" placeholder="ex: apresentar réplica"></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-outline" id="modal-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-gold" id="prazo-submit">Criar prazo</button>
+        </div>
+      </form>
+    `);
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+
+    const $ = (id) => document.getElementById(id);
+    let lastCalc = null;
+    let timer = null;
+
+    function params() {
+      return {
+        disponibilizacao: $('f-prazo-disp').value,
+        dias: $('f-prazo-dias').value,
+        corridos: $('f-prazo-contagem').value === 'corridos',
+        dobro: $('f-prazo-dobro').checked
+      };
+    }
+    async function recalc() {
+      const p = params();
+      if (!p.disponibilizacao || !p.dias) return;
+      try {
+        const qs = new URLSearchParams({ disponibilizacao: p.disponibilizacao, dias: p.dias, corridos: p.corridos ? '1' : '0', dobro: p.dobro ? '1' : '0' });
+        lastCalc = await api('/integrations/djen/prazo/calcular?' + qs.toString());
+        $('f-prazo-final').value = lastCalc.final;
+        $('prazo-explica').textContent = lastCalc.explicacao + (lastCalc.lembrete && $('f-prazo-lembrete').checked ? ` Lembrete em ${dateBR(lastCalc.lembrete)}.` : '');
+      } catch (err) {
+        lastCalc = null;
+        $('prazo-explica').textContent = err.message;
+      }
+    }
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(recalc, 250); };
+    ['f-prazo-disp', 'f-prazo-dias', 'f-prazo-contagem', 'f-prazo-dobro', 'f-prazo-lembrete'].forEach((id) => {
+      $(id).addEventListener('input', schedule);
+      $(id).addEventListener('change', schedule);
+    });
+    document.querySelectorAll('[data-prazo-dias]').forEach((b) => b.addEventListener('click', () => {
+      $('f-prazo-dias').value = b.dataset.prazoDias;
+      recalc();
+    }));
+    $('f-prazo-final').addEventListener('change', () => {
+      if (lastCalc && $('f-prazo-final').value !== lastCalc.final) {
+        $('prazo-explica').textContent = `Ajustado manualmente (o cálculo deu ${dateBR(lastCalc.final)}). ` + lastCalc.explicacao;
+      }
+    });
+    recalc();
+
+    $('prazo-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('prazo-submit');
+      btn.disabled = true; btn.textContent = 'Criando…';
+      try {
+        const p = params();
+        const desc = [$('f-prazo-desc').value.trim(), resumo ? 'Intimação: ' + resumo + (item.content && item.content.length > 300 ? '…' : '') : ''].filter(Boolean).join('\n\n');
+        const r = await api('/integrations/djen/communications/' + item.id + '/prazo', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...p,
+            dias: Number(p.dias),
+            final: $('f-prazo-final').value,
+            lembrete: $('f-prazo-lembrete').checked,
+            title: $('f-prazo-title').value.trim(),
+            description: desc,
+            priority: $('f-prazo-priority').value
+          })
+        });
+        closeModal();
+        alert(`Prazo criado: vence em ${dateBR(r.prazo.final)}.`
+          + (r.lembrete ? `\nLembrete interno em ${dateBR(r.lembrete.due_date)}.` : '')
+          + (r.google_event_created
+            ? '\nEnviado para o Google Agenda.'
+            : r.google_connected
+              ? '\nNão foi possível criar o evento no Google Agenda agora. O prazo ficou salvo no sistema (aba Gestão).'
+              : '\nGoogle Agenda não conectado: o prazo ficou só no sistema (aba Gestão).'));
+        loadDjenPanel();
+      } catch (err) {
+        alert('Não foi possível criar o prazo: ' + err.message);
+        btn.disabled = false; btn.textContent = 'Criar prazo';
+      }
+    });
   }
 
   async function loadDjenPanel() {
@@ -1030,6 +1166,11 @@
     document.getElementById('djen-list').innerHTML = items.length
       ? items.map(djenSummaryRow).join('')
       : '<p class="muted">Nenhuma intimação para exibir.</p>';
+
+    const byId = new Map(items.map((i) => [String(i.id), i]));
+    document.querySelectorAll('[data-prazo-djen]').forEach((el) => el.addEventListener('click', () => {
+      openPrazoModal(byId.get(el.dataset.prazoDjen));
+    }));
 
     document.querySelectorAll('[data-mark-djen-read]').forEach((el) => el.addEventListener('click', async () => {
       await api('/integrations/djen/communications/' + el.dataset.markDjenRead + '/read', { method: 'POST' });

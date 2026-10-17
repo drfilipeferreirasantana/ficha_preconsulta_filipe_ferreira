@@ -7,6 +7,8 @@ const pje = require('../integrations/pje');
 const googleCalendar = require('../integrations/googleCalendar');
 const email = require('../utils/email');
 const asaas = require('../integrations/asaas');
+const { calcularPrazo, diasUteisAntes } = require('../utils/prazos');
+const { createTask } = require('./tasks');
 
 const router = express.Router();
 
@@ -106,6 +108,80 @@ router.post('/djen/communications/read-all', requireAuth, async (req, res) => {
 router.delete('/djen/communications/:id', requireAuth, async (req, res) => {
   await db.run('DELETE FROM djen_communications WHERE id = ?', [req.params.id]);
   res.status(204).end();
+});
+
+// ---- Prazo a partir de uma intimacao ----
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function prazoParams(src) {
+  return {
+    disponibilizacao: src.disponibilizacao,
+    dias: Number(src.dias),
+    corridos: src.corridos === true || src.corridos === '1' || src.corridos === 'true',
+    dobro: src.dobro === true || src.dobro === '1' || src.dobro === 'true'
+  };
+}
+
+// Calcula (sem gravar nada) o prazo final para mostrar na tela enquanto o
+// advogado escolhe os dias.
+router.get('/djen/prazo/calcular', requireAuth, (req, res) => {
+  try {
+    res.json(calcularPrazo(prazoParams(req.query)));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Cria a tarefa do prazo (e o lembrete interno), atualiza o proximo prazo
+// do processo e marca a intimacao como lida.
+router.post('/djen/communications/:id/prazo', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const comm = await db.get(`
+    SELECT djen_communications.*, processes.client_id, processes.next_deadline
+    FROM djen_communications LEFT JOIN processes ON processes.id = djen_communications.process_id
+    WHERE djen_communications.id = ?`, [req.params.id]);
+  if (!comm) return res.status(404).json({ error: 'Intimação não encontrada.' });
+
+  let calc;
+  try {
+    calc = calcularPrazo(prazoParams({ ...b, disponibilizacao: b.disponibilizacao || comm.disponibilizacao_date }));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (b.final && !ISO_DATE.test(b.final)) return res.status(400).json({ error: 'Prazo final inválido.' });
+  const final = b.final || calc.final;
+  const title = String(b.title || '').trim() || `Prazo: ${comm.communication_type || 'intimação'} - ${comm.process_number || 'processo não identificado'}`;
+  const description = [String(b.description || '').trim(), `Cálculo: ${calc.explicacao}`, final !== calc.final ? `Prazo final ajustado manualmente (calculado: ${calc.final}).` : '']
+    .filter(Boolean).join('\n\n');
+
+  const base = { client_id: comm.client_id || null, process_id: comm.process_id || null };
+  const main = await createTask({ ...base, title, description, due_date: final, priority: b.priority || 'alta' });
+
+  let reminder = null;
+  if (b.lembrete) {
+    const lembreteDate = diasUteisAntes(final, 2);
+    if (lembreteDate >= calc.inicio && lembreteDate < final) {
+      reminder = await createTask({ ...base, title: `Lembrete: ${title} (vence ${final.split('-').reverse().join('/')})`, description: 'Lembrete interno 2 dias úteis antes do prazo final.', due_date: lembreteDate, priority: 'media' });
+    }
+  }
+
+  if (comm.process_id) {
+    const today = new Date().toISOString().slice(0, 10);
+    const current = comm.next_deadline || '';
+    if (!current || current < today || final < current) {
+      await db.run('UPDATE processes SET next_deadline = ?, next_deadline_desc = ? WHERE id = ?', [final, title.slice(0, 255), comm.process_id]);
+    }
+  }
+  await db.run('UPDATE djen_communications SET is_read = 1 WHERE id = ?', [comm.id]);
+
+  res.status(201).json({
+    prazo: { ...calc, final },
+    task: main.task,
+    lembrete: reminder ? reminder.task : null,
+    google_connected: main.google_connected,
+    google_event_created: Boolean(main.task.google_event_id)
+  });
 });
 
 // ---- Processos monitorados (movimentacao por processo especifico) ----

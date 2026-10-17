@@ -44,10 +44,9 @@ async function syncToGoogle(task, { isHearing }) {
   }
 }
 
-router.post('/', async (req, res) => {
-  const b = req.body || {};
-  if (!b.title) return res.status(400).json({ error: 'Titulo da tarefa e obrigatorio.' });
-
+// Cria uma tarefa (e o evento no Google Agenda, se conectado). Usado pela
+// rota abaixo e pelo "criar prazo" das intimacoes do DJEN.
+async function createTask(b) {
   const isHearing = Boolean(b.is_hearing && b.event_start && b.event_end);
   const dueDate = b.due_date || (isHearing ? String(b.event_start).slice(0, 10) : null);
 
@@ -89,7 +88,13 @@ router.post('/', async (req, res) => {
     }));
   }
 
-  res.status(201).json({ task, whatsapp_link: whatsappLink, google_connected: await googleCalendar.isConnected() });
+  return { task, whatsapp_link: whatsappLink, google_connected: await googleCalendar.isConnected() };
+}
+
+router.post('/', async (req, res) => {
+  const b = req.body || {};
+  if (!b.title) return res.status(400).json({ error: 'Titulo da tarefa e obrigatorio.' });
+  res.status(201).json(await createTask(b));
 });
 
 router.put('/:id', async (req, res) => {
@@ -149,3 +154,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.createTask = createTask;
